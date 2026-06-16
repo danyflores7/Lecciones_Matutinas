@@ -1,0 +1,14 @@
+# Dependencias
+node_modules/
+
+# Entorno (claves locales)
+.env
+
+# Sistema
+.DS_Store
+*.log
+
+# Expo / build (además del .gitignore de mobile/)
+mobile/.expo/
+mobile/dist/
+mobile/web-build/
