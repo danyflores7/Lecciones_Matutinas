@@ -1,85 +1,62 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Platform,
+  Pressable,
   RefreshControl,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Switch,
   Text,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
+import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { supabase, type VersiculoDia } from './lib/supabase';
+import { getVersiculoPorFecha, type VersiculoDia } from '../../lib/supabase';
+import { fechaHoyISO, fechaLarga, horaTexto } from '../../lib/fechas';
 import {
   cancelarRecordatorio,
   HORA_RECORDATORIO,
   pedirPermisoNotificaciones,
   programarRecordatorioDiario,
-} from './lib/notifications';
+} from '../../lib/notifications';
 
 const PREF_RECORDATORIO = 'recordatorio_activo';
 
-const MESES = [
-  'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
-  'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
-];
-
-function fechaHoyISO(): string {
-  const d = new Date();
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  return `${d.getFullYear()}-${mm}-${dd}`;
-}
-
-function fechaLarga(v: VersiculoDia): string {
-  const dia = Number(v.fecha.slice(8, 10));
-  const mes = MESES[Number(v.fecha.slice(5, 7)) - 1];
-  return `${v.dia_semana} ${dia} de ${mes}`;
-}
-
-function horaTexto({ hour, minute }: { hour: number; minute: number }): string {
-  const ampm = hour < 12 ? 'a.m.' : 'p.m.';
-  const h12 = hour % 12 === 0 ? 12 : hour % 12;
-  return `${h12}:${String(minute).padStart(2, '0')} ${ampm}`;
-}
-
-export default function App() {
+export default function Inicio() {
+  const router = useRouter();
   const [verse, setVerse] = useState<VersiculoDia | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [recordatorio, setRecordatorio] = useState(false);
 
-  const cargarVersiculo = useCallback(async () => {
-    setError(null);
-    const { data, error } = await supabase
-      .from('versiculos_dia')
-      .select('*')
-      .eq('fecha', fechaHoyISO())
-      .maybeSingle();
-
-    if (error) setError(error.message);
-    setVerse((data as VersiculoDia) ?? null);
+  const cargar = useCallback(async () => {
+    try {
+      setError(null);
+      setVerse(await getVersiculoPorFecha(fechaHoyISO()));
+    } catch (e: any) {
+      setError(e?.message ?? 'No se pudo cargar el versículo.');
+    }
   }, []);
 
   useEffect(() => {
     (async () => {
-      await cargarVersiculo();
+      await cargar();
       const guardado = await AsyncStorage.getItem(PREF_RECORDATORIO);
       setRecordatorio(guardado === '1');
       setLoading(false);
     })();
-  }, [cargarVersiculo]);
+  }, [cargar]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await cargarVersiculo();
+    await cargar();
     setRefreshing(false);
-  }, [cargarVersiculo]);
+  }, [cargar]);
 
   const onToggleRecordatorio = useCallback(async (value: boolean) => {
     if (value) {
@@ -97,7 +74,7 @@ export default function App() {
   }, []);
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={styles.safe} edges={['top']}>
       <StatusBar style="dark" />
       <ScrollView
         contentContainerStyle={styles.content}
@@ -114,7 +91,7 @@ export default function App() {
           </View>
         ) : verse ? (
           <>
-            <Text style={styles.fecha}>{fechaLarga(verse)}</Text>
+            <Text style={styles.fecha}>{fechaLarga(verse.fecha, verse.dia_semana)}</Text>
             <Text style={styles.tema}>{verse.tema}</Text>
 
             <View style={styles.card}>
@@ -122,10 +99,18 @@ export default function App() {
               <Text style={styles.texto}>{verse.texto ?? ''}</Text>
             </View>
 
+            <Pressable
+              style={({ pressed }) => [styles.btnMemorizar, pressed && styles.btnPressed]}
+              onPress={() => router.push({ pathname: '/memorizar', params: { fecha: verse.fecha } })}
+            >
+              <Ionicons name="school-outline" size={20} color="#FFFFFF" />
+              <Text style={styles.btnMemorizarText}>Memorizar este versículo</Text>
+            </Pressable>
+
             <View style={styles.recordatorio}>
               <View style={styles.recordatorioTexto}>
                 <Text style={styles.recordatorioTitulo}>
-                  Recordatorio diario · {horaTexto(HORA_RECORDATORIO)}
+                  Recordatorio diario · {horaTexto(HORA_RECORDATORIO.hour, HORA_RECORDATORIO.minute)}
                 </Text>
                 <Text style={styles.recordatorioSub}>
                   Te avisamos cada mañana para repasar el versículo del día.
@@ -142,7 +127,7 @@ export default function App() {
           <View style={styles.centered}>
             <Text style={styles.vacioTitulo}>No hay versículo para hoy</Text>
             <Text style={styles.vacioSub}>
-              El plan cargado va del 1 de enero al 30 de junio de 2026.
+              El plan cargado va del 1 de enero al 30 de junio de 2026. Revisa el Calendario.
             </Text>
           </View>
         )}
@@ -154,31 +139,35 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: '#F1EFE8',
-    paddingTop: Platform.OS === 'android' ? 28 : 0,
-  },
-  content: { padding: 20, paddingBottom: 48 },
+  safe: { flex: 1, backgroundColor: '#F1EFE8' },
+  content: { padding: 20, paddingBottom: 40 },
   header: { marginBottom: 20 },
   brand: { fontSize: 26, fontWeight: '600', color: '#042C53' },
   brandSub: { fontSize: 14, color: '#5F5E5A', marginTop: 2 },
   centered: { alignItems: 'center', justifyContent: 'center', paddingVertical: 64, gap: 8 },
   fecha: { fontSize: 14, color: '#5F5E5A', textTransform: 'capitalize' },
   tema: { fontSize: 18, fontWeight: '600', color: '#185FA5', marginTop: 2, marginBottom: 14 },
-  card: {
-    backgroundColor: '#E6F1FB',
-    borderRadius: 18,
-    padding: 22,
-  },
+  card: { backgroundColor: '#E6F1FB', borderRadius: 18, padding: 22 },
   cita: { fontSize: 15, fontWeight: '600', color: '#0C447C', marginBottom: 12 },
   texto: {
     fontSize: 21,
     lineHeight: 32,
     color: '#042C53',
     fontStyle: 'italic',
-    fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif',
+    fontFamily: 'serif',
   },
+  btnMemorizar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#185FA5',
+    borderRadius: 14,
+    paddingVertical: 14,
+    marginTop: 16,
+  },
+  btnPressed: { opacity: 0.85 },
+  btnMemorizarText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600' },
   recordatorio: {
     flexDirection: 'row',
     alignItems: 'center',

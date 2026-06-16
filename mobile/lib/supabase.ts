@@ -35,3 +35,22 @@ export type VersiculoDia = {
   texto: string | null;
   semestre: string;
 };
+
+export async function getVersiculoPorFecha(fecha: string): Promise<VersiculoDia | null> {
+  const { data, error } = await supabase
+    .from('versiculos_dia')
+    .select('*')
+    .eq('fecha', fecha)
+    .maybeSingle();
+  if (error) throw error;
+  return (data as VersiculoDia) ?? null;
+}
+
+export async function getTodosLosVersiculos(): Promise<VersiculoDia[]> {
+  const { data, error } = await supabase
+    .from('versiculos_dia')
+    .select('*')
+    .order('fecha', { ascending: true });
+  if (error) throw error;
+  return (data as VersiculoDia[]) ?? [];
+}
