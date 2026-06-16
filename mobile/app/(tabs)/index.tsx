@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -13,31 +14,46 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import { captureRef } from 'react-native-view-shot';
+import * as Sharing from 'expo-sharing';
 
 import { getVersiculoPorFecha, type VersiculoDia } from '../../lib/supabase';
 import { fechaHoyISO, fechaLarga, horaTexto } from '../../lib/fechas';
 import {
+  getHoraRecordatorio,
+  getRecordatorioActivo,
+  type Hora,
+  registrarVisitaYRacha,
+  setHoraRecordatorio,
+  setRecordatorioActivo,
+} from '../../lib/almacen';
+import {
   cancelarRecordatorio,
-  HORA_RECORDATORIO,
   pedirPermisoNotificaciones,
   programarRecordatorioDiario,
 } from '../../lib/notifications';
 
-const PREF_RECORDATORIO = 'recordatorio_activo';
-
 export default function Inicio() {
   const router = useRouter();
+  const cardRef = useRef<View>(null);
+
   const [verse, setVerse] = useState<VersiculoDia | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
   const [recordatorio, setRecordatorio] = useState(false);
+  const [hora, setHora] = useState<Hora>({ hour: 6, minute: 0 });
+  const [showPicker, setShowPicker] = useState(false);
+  const [racha, setRacha] = useState(0);
 
   const cargar = useCallback(async () => {
     try {
       setError(null);
-      setVerse(await getVersiculoPorFecha(fechaHoyISO()));
+      const v = await getVersiculoPorFecha(fechaHoyISO());
+      setVerse(v);
+      if (v) setRacha(await registrarVisitaYRacha());
     } catch (e: any) {
       setError(e?.message ?? 'No se pudo cargar el versículo.');
     }
@@ -46,8 +62,8 @@ export default function Inicio() {
   useEffect(() => {
     (async () => {
       await cargar();
-      const guardado = await AsyncStorage.getItem(PREF_RECORDATORIO);
-      setRecordatorio(guardado === '1');
+      setRecordatorio(await getRecordatorioActivo());
+      setHora(await getHoraRecordatorio());
       setLoading(false);
     })();
   }, [cargar]);
@@ -58,19 +74,53 @@ export default function Inicio() {
     setRefreshing(false);
   }, [cargar]);
 
-  const onToggleRecordatorio = useCallback(async (value: boolean) => {
-    if (value) {
-      const ok = await pedirPermisoNotificaciones();
-      if (!ok) {
-        setError('Activa los permisos de notificaciones para usar el recordatorio.');
-        return;
+  const onToggleRecordatorio = useCallback(
+    async (value: boolean) => {
+      if (value) {
+        const ok = await pedirPermisoNotificaciones();
+        if (!ok) {
+          setError('Activa los permisos de notificaciones para usar el recordatorio.');
+          return;
+        }
+        await programarRecordatorioDiario(hora.hour, hora.minute);
+      } else {
+        await cancelarRecordatorio();
       }
-      await programarRecordatorioDiario();
-    } else {
-      await cancelarRecordatorio();
+      setRecordatorio(value);
+      await setRecordatorioActivo(value);
+    },
+    [hora]
+  );
+
+  const horaDate = useMemo(() => {
+    const d = new Date();
+    d.setHours(hora.hour, hora.minute, 0, 0);
+    return d;
+  }, [hora]);
+
+  const onChangeHora = useCallback(
+    async (event: DateTimePickerEvent, selected?: Date) => {
+      if (Platform.OS !== 'ios') setShowPicker(false);
+      if (event.type === 'dismissed' || !selected) return;
+      const nueva: Hora = { hour: selected.getHours(), minute: selected.getMinutes() };
+      setHora(nueva);
+      await setHoraRecordatorio(nueva);
+      if (recordatorio) await programarRecordatorioDiario(nueva.hour, nueva.minute);
+    },
+    [recordatorio]
+  );
+
+  const compartir = useCallback(async () => {
+    try {
+      const uri = await captureRef(cardRef, { format: 'png', quality: 1 });
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(uri, { mimeType: 'image/png', dialogTitle: 'Compartir versículo' });
+      } else {
+        setError('Compartir no está disponible en este dispositivo.');
+      }
+    } catch {
+      setError('No se pudo compartir el versículo.');
     }
-    setRecordatorio(value);
-    await AsyncStorage.setItem(PREF_RECORDATORIO, value ? '1' : '0');
   }, []);
 
   return (
@@ -81,8 +131,18 @@ export default function Inicio() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
         <View style={styles.header}>
-          <Text style={styles.brand}>Matutinas</Text>
-          <Text style={styles.brandSub}>Primer semestre 2026</Text>
+          <View>
+            <Text style={styles.brand}>Matutinas</Text>
+            <Text style={styles.brandSub}>Primer semestre 2026</Text>
+          </View>
+          {racha > 0 ? (
+            <View style={styles.racha}>
+              <Ionicons name="flame" size={16} color="#854F0B" />
+              <Text style={styles.rachaText}>
+                {racha} {racha === 1 ? 'día' : 'días'}
+              </Text>
+            </View>
+          ) : null}
         </View>
 
         {loading ? (
@@ -94,27 +154,37 @@ export default function Inicio() {
             <Text style={styles.fecha}>{fechaLarga(verse.fecha, verse.dia_semana)}</Text>
             <Text style={styles.tema}>{verse.tema}</Text>
 
-            <View style={styles.card}>
+            <View ref={cardRef} collapsable={false} style={styles.card}>
               <Text style={styles.cita}>{verse.cita}</Text>
               <Text style={styles.texto}>{verse.texto ?? ''}</Text>
+              <Text style={styles.cardFooter}>Matutinas · Reina-Valera 1909</Text>
             </View>
 
             <Pressable
-              style={({ pressed }) => [styles.btnMemorizar, pressed && styles.btnPressed]}
+              style={({ pressed }) => [styles.btnPrimario, pressed && styles.btnPressed]}
               onPress={() => router.push({ pathname: '/memorizar', params: { fecha: verse.fecha } })}
             >
               <Ionicons name="school-outline" size={20} color="#FFFFFF" />
-              <Text style={styles.btnMemorizarText}>Memorizar este versículo</Text>
+              <Text style={styles.btnPrimarioText}>Memorizar este versículo</Text>
+            </Pressable>
+
+            <Pressable
+              style={({ pressed }) => [styles.btnSecundario, pressed && styles.btnPressed]}
+              onPress={compartir}
+            >
+              <Ionicons name="share-social-outline" size={20} color="#185FA5" />
+              <Text style={styles.btnSecundarioText}>Compartir</Text>
             </Pressable>
 
             <View style={styles.recordatorio}>
               <View style={styles.recordatorioTexto}>
-                <Text style={styles.recordatorioTitulo}>
-                  Recordatorio diario · {horaTexto(HORA_RECORDATORIO.hour, HORA_RECORDATORIO.minute)}
-                </Text>
+                <Text style={styles.recordatorioTitulo}>Recordatorio diario</Text>
                 <Text style={styles.recordatorioSub}>
-                  Te avisamos cada mañana para repasar el versículo del día.
+                  Aviso cada mañana a las {horaTexto(hora.hour, hora.minute)}.
                 </Text>
+                <Pressable onPress={() => setShowPicker(true)} hitSlop={8}>
+                  <Text style={styles.cambiar}>Cambiar hora</Text>
+                </Pressable>
               </View>
               <Switch
                 value={recordatorio}
@@ -122,6 +192,19 @@ export default function Inicio() {
                 trackColor={{ true: '#185FA5', false: '#D3D1C7' }}
               />
             </View>
+
+            {showPicker ? (
+              Platform.OS === 'ios' ? (
+                <View style={styles.pickerIOS}>
+                  <DateTimePicker value={horaDate} mode="time" display="spinner" onChange={onChangeHora} />
+                  <Pressable style={styles.listoBtn} onPress={() => setShowPicker(false)}>
+                    <Text style={styles.listoText}>Listo</Text>
+                  </Pressable>
+                </View>
+              ) : (
+                <DateTimePicker value={horaDate} mode="time" is24Hour={false} onChange={onChangeHora} />
+              )
+            ) : null}
           </>
         ) : (
           <View style={styles.centered}>
@@ -141,22 +224,19 @@ export default function Inicio() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#F1EFE8' },
   content: { padding: 20, paddingBottom: 40 },
-  header: { marginBottom: 20 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
   brand: { fontSize: 26, fontWeight: '600', color: '#042C53' },
   brandSub: { fontSize: 14, color: '#5F5E5A', marginTop: 2 },
+  racha: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#FAEEDA', paddingHorizontal: 11, paddingVertical: 6, borderRadius: 999 },
+  rachaText: { fontSize: 13, fontWeight: '600', color: '#854F0B' },
   centered: { alignItems: 'center', justifyContent: 'center', paddingVertical: 64, gap: 8 },
   fecha: { fontSize: 14, color: '#5F5E5A', textTransform: 'capitalize' },
   tema: { fontSize: 18, fontWeight: '600', color: '#185FA5', marginTop: 2, marginBottom: 14 },
   card: { backgroundColor: '#E6F1FB', borderRadius: 18, padding: 22 },
   cita: { fontSize: 15, fontWeight: '600', color: '#0C447C', marginBottom: 12 },
-  texto: {
-    fontSize: 21,
-    lineHeight: 32,
-    color: '#042C53',
-    fontStyle: 'italic',
-    fontFamily: 'serif',
-  },
-  btnMemorizar: {
+  texto: { fontSize: 21, lineHeight: 32, color: '#042C53', fontStyle: 'italic', fontFamily: 'serif' },
+  cardFooter: { fontSize: 12, color: '#185FA5', marginTop: 16, fontWeight: '600' },
+  btnPrimario: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -166,8 +246,21 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     marginTop: 16,
   },
+  btnPrimarioText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600' },
+  btnSecundario: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#185FA5',
+    borderRadius: 14,
+    paddingVertical: 13,
+    marginTop: 10,
+  },
+  btnSecundarioText: { color: '#185FA5', fontSize: 16, fontWeight: '600' },
   btnPressed: { opacity: 0.85 },
-  btnMemorizarText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600' },
   recordatorio: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -180,6 +273,10 @@ const styles = StyleSheet.create({
   recordatorioTexto: { flex: 1 },
   recordatorioTitulo: { fontSize: 15, fontWeight: '600', color: '#2C2C2A' },
   recordatorioSub: { fontSize: 13, color: '#5F5E5A', marginTop: 3, lineHeight: 18 },
+  cambiar: { fontSize: 13, fontWeight: '600', color: '#185FA5', marginTop: 6 },
+  pickerIOS: { backgroundColor: '#FFFFFF', borderRadius: 16, marginTop: 12, paddingBottom: 8 },
+  listoBtn: { alignSelf: 'flex-end', paddingHorizontal: 20, paddingVertical: 8 },
+  listoText: { fontSize: 16, fontWeight: '600', color: '#185FA5' },
   vacioTitulo: { fontSize: 18, fontWeight: '600', color: '#2C2C2A' },
   vacioSub: { fontSize: 14, color: '#5F5E5A', textAlign: 'center' },
   error: { color: '#A32D2D', fontSize: 13, marginTop: 16, textAlign: 'center' },

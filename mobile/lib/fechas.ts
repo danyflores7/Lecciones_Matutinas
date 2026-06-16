@@ -23,6 +23,15 @@ export function fechaLarga(fechaISO: string, diaSemana: string): string {
   return `${diaSemana} ${dia} de ${mes}`;
 }
 
+// ISO de hoy desplazado N días (p. ej. -1 = ayer). Útil para la racha.
+export function fechaRelativaISO(dias: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + dias);
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${mm}-${dd}`;
+}
+
 export function diaDelMes(fechaISO: string): number {
   return Number(fechaISO.slice(8, 10));
 }
