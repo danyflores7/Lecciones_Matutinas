@@ -17,6 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { captureRef } from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
+import * as Speech from 'expo-speech';
 
 import { getVersiculoPorFecha, type VersiculoDia } from '../../lib/supabase';
 import { fechaHoyISO, fechaLarga, horaTexto } from '../../lib/fechas';
@@ -47,6 +48,7 @@ export default function Inicio() {
   const [hora, setHora] = useState<Hora>({ hour: 6, minute: 0 });
   const [showPicker, setShowPicker] = useState(false);
   const [racha, setRacha] = useState(0);
+  const [hablando, setHablando] = useState(false);
 
   const cargar = useCallback(async () => {
     try {
@@ -110,6 +112,29 @@ export default function Inicio() {
     [recordatorio]
   );
 
+  const alternarVoz = useCallback(() => {
+    if (hablando) {
+      Speech.stop();
+      setHablando(false);
+      return;
+    }
+    if (!verse?.texto) return;
+    setHablando(true);
+    Speech.speak(`${verse.cita}. ${verse.texto}`, {
+      language: 'es-MX',
+      onDone: () => setHablando(false),
+      onStopped: () => setHablando(false),
+      onError: () => setHablando(false),
+    });
+  }, [hablando, verse]);
+
+  // Detiene la voz al salir de la pantalla.
+  useEffect(() => {
+    return () => {
+      Speech.stop();
+    };
+  }, []);
+
   const compartir = useCallback(async () => {
     try {
       const uri = await captureRef(cardRef, { format: 'png', quality: 1 });
@@ -168,13 +193,22 @@ export default function Inicio() {
               <Text style={styles.btnPrimarioText}>Memorizar este versículo</Text>
             </Pressable>
 
-            <Pressable
-              style={({ pressed }) => [styles.btnSecundario, pressed && styles.btnPressed]}
-              onPress={compartir}
-            >
-              <Ionicons name="share-social-outline" size={20} color="#185FA5" />
-              <Text style={styles.btnSecundarioText}>Compartir</Text>
-            </Pressable>
+            <View style={styles.filaBotones}>
+              <Pressable
+                style={({ pressed }) => [styles.btnSecundario, styles.btnFlex, pressed && styles.btnPressed]}
+                onPress={alternarVoz}
+              >
+                <Ionicons name={hablando ? 'stop' : 'volume-high-outline'} size={20} color="#185FA5" />
+                <Text style={styles.btnSecundarioText}>{hablando ? 'Detener' : 'Escuchar'}</Text>
+              </Pressable>
+              <Pressable
+                style={({ pressed }) => [styles.btnSecundario, styles.btnFlex, pressed && styles.btnPressed]}
+                onPress={compartir}
+              >
+                <Ionicons name="share-social-outline" size={20} color="#185FA5" />
+                <Text style={styles.btnSecundarioText}>Compartir</Text>
+              </Pressable>
+            </View>
 
             <View style={styles.recordatorio}>
               <View style={styles.recordatorioTexto}>
@@ -260,6 +294,8 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   btnSecundarioText: { color: '#185FA5', fontSize: 16, fontWeight: '600' },
+  filaBotones: { flexDirection: 'row', gap: 10, marginTop: 10 },
+  btnFlex: { flex: 1, marginTop: 0 },
   btnPressed: { opacity: 0.85 },
   recordatorio: {
     flexDirection: 'row',
