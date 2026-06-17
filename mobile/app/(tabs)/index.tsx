@@ -23,6 +23,7 @@ import { SelectorVelocidad } from '../../components/SelectorVelocidad';
 
 import { getVersiculoPorFecha, type VersiculoDia } from '../../lib/supabase';
 import { fechaHoyISO, fechaLarga, horaTexto } from '../../lib/fechas';
+import { guardarCache, leerCache } from '../../lib/cache';
 import {
   getHoraRecordatorio,
   getRecordatorioActivo,
@@ -56,14 +57,27 @@ export default function Inicio() {
   const [velocidad, setVel] = useState(1.0);
 
   const cargar = useCallback(async () => {
-    try {
+    const hoy = fechaHoyISO();
+    const cacheado = await leerCache<VersiculoDia>(`verse:${hoy}`);
+    if (cacheado) {
+      setVerse(cacheado);
       setError(null);
-      const v = await getVersiculoPorFecha(fechaHoyISO());
-      setVerse(v);
-      if (v) setRacha(await registrarVisitaYRacha());
-    } catch (e: any) {
-      setError(e?.message ?? 'No se pudo cargar el versículo.');
     }
+    let hayVerso = !!cacheado;
+    try {
+      const v = await getVersiculoPorFecha(hoy);
+      if (v) {
+        setVerse(v);
+        guardarCache(`verse:${hoy}`, v);
+        hayVerso = true;
+      } else if (!cacheado) {
+        setVerse(null);
+      }
+      setError(null);
+    } catch {
+      if (!cacheado) setError('Sin conexión. Conéctate una vez para ver el versículo de hoy.');
+    }
+    if (hayVerso) setRacha(await registrarVisitaYRacha());
   }, []);
 
   useEffect(() => {

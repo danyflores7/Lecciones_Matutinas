@@ -7,6 +7,7 @@ import { getLeccion, type Leccion, type Pregunta } from '../lib/supabase';
 import { fechaDiaMes } from '../lib/fechas';
 import { citaParaVoz, continuar, detenerVoz, pausar, reproducirPartes } from '../lib/voz';
 import { getVelocidad, setVelocidad } from '../lib/almacen';
+import { guardarCache, leerCache } from '../lib/cache';
 import { SelectorVelocidad } from '../components/SelectorVelocidad';
 
 type Datos = { leccion: Leccion; preguntas: Pregunta[]; citasTexto: Record<string, string> };
@@ -37,7 +38,20 @@ export default function LeccionDetalle() {
 
   useEffect(() => {
     (async () => {
-      if (numero) setData(await getLeccion(Number(numero)));
+      if (numero) {
+        const clave = `leccion:${numero}`;
+        const cacheado = await leerCache<Datos>(clave);
+        if (cacheado) setData(cacheado);
+        try {
+          const fresca = await getLeccion(Number(numero));
+          if (fresca) {
+            setData(fresca);
+            guardarCache(clave, fresca);
+          }
+        } catch {
+          // sin red: nos quedamos con lo cacheado
+        }
+      }
       setVel(await getVelocidad());
       setLoading(false);
     })();

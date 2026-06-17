@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { getLecciones, type Leccion } from '../../lib/supabase';
 import { fechaDiaMes } from '../../lib/fechas';
+import { guardarCache, leerCache } from '../../lib/cache';
 
 export default function Estudio() {
   const router = useRouter();
@@ -15,10 +16,15 @@ export default function Estudio() {
 
   useEffect(() => {
     (async () => {
+      const cacheadas = await leerCache<Leccion[]>('lecciones');
+      if (cacheadas) setItems(cacheadas);
       try {
-        setItems(await getLecciones());
+        const frescas = await getLecciones();
+        setItems(frescas);
+        guardarCache('lecciones', frescas);
+        setError(null);
       } catch (e: any) {
-        setError(e?.message ?? 'No se pudieron cargar las lecciones.');
+        if (!cacheadas) setError(e?.message ?? 'No se pudieron cargar las lecciones.');
       }
       setLoading(false);
     })();
