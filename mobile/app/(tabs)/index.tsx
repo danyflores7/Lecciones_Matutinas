@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Image,
   Platform,
   Pressable,
   RefreshControl,
@@ -164,7 +165,8 @@ export default function Inicio() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
         <View style={styles.header}>
-          <View>
+          <Image source={require('../../assets/logo-256.png')} style={styles.logo} resizeMode="contain" />
+          <View style={styles.brandTextos}>
             <Text style={styles.brand}>Matutinas</Text>
             <Text style={styles.brandSub}>Primer semestre 2026</Text>
           </View>
@@ -268,7 +270,9 @@ export default function Inicio() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#F1EFE8' },
   content: { padding: 20, paddingBottom: 40 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 20 },
+  logo: { width: 52, height: 52 },
+  brandTextos: { flex: 1 },
   brand: { fontSize: 26, fontWeight: '600', color: '#042C53' },
   brandSub: { fontSize: 14, color: '#5F5E5A', marginTop: 2 },
   racha: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#FAEEDA', paddingHorizontal: 11, paddingVertical: 6, borderRadius: 999 },
