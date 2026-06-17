@@ -19,6 +19,8 @@ import { captureRef } from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
 import * as Speech from 'expo-speech';
 
+import { citaParaVoz } from '../../lib/voz';
+
 import { getVersiculoPorFecha, type VersiculoDia } from '../../lib/supabase';
 import { fechaHoyISO, fechaLarga, horaTexto } from '../../lib/fechas';
 import {
@@ -120,7 +122,7 @@ export default function Inicio() {
     }
     if (!verse?.texto) return;
     setHablando(true);
-    Speech.speak(`${verse.cita}. ${verse.texto}`, {
+    Speech.speak(`${citaParaVoz(verse.cita)}. ${verse.texto}`, {
       language: 'es-MX',
       onDone: () => setHablando(false),
       onStopped: () => setHablando(false),

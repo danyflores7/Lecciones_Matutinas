@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import * as Speech from 'expo-speech';
 
 import { getLeccion, type Leccion, type Pregunta } from '../lib/supabase';
 import { fechaDiaMes } from '../lib/fechas';
@@ -12,6 +14,33 @@ export default function LeccionDetalle() {
   const [data, setData] = useState<Datos | null>(null);
   const [loading, setLoading] = useState(true);
   const [abiertas, setAbiertas] = useState<Set<string>>(new Set());
+  const [hablandoId, setHablandoId] = useState<number | null>(null);
+
+  // Detiene la voz al salir de la pantalla.
+  useEffect(() => {
+    return () => {
+      Speech.stop();
+    };
+  }, []);
+
+  const hablarPregunta = (p: Pregunta) => {
+    if (hablandoId === p.id) {
+      Speech.stop();
+      setHablandoId(null);
+      return;
+    }
+    Speech.stop();
+    const mapa = data?.citasTexto ?? {};
+    const versos = (p.citas ?? []).map((c) => mapa[c]).filter(Boolean);
+    const texto = [p.pregunta, ...versos, p.nota].filter(Boolean).join('. ');
+    setHablandoId(p.id);
+    Speech.speak(texto, {
+      language: 'es-MX',
+      onDone: () => setHablandoId(null),
+      onStopped: () => setHablandoId(null),
+      onError: () => setHablandoId(null),
+    });
+  };
 
   useEffect(() => {
     (async () => {
@@ -70,10 +99,19 @@ export default function LeccionDetalle() {
         const abiertasDeP = (p.citas ?? []).filter((c) => abiertas.has(`${p.id}|${c}`));
         return (
           <View key={p.id} style={styles.pregunta}>
-            <Text style={styles.preguntaTexto}>
-              <Text style={styles.preguntaNum}>{p.orden}. </Text>
-              {p.pregunta}
-            </Text>
+            <View style={styles.preguntaHead}>
+              <Text style={styles.preguntaTexto}>
+                <Text style={styles.preguntaNum}>{p.orden}. </Text>
+                {p.pregunta}
+              </Text>
+              <Pressable onPress={() => hablarPregunta(p)} hitSlop={10} style={styles.vozBtn}>
+                <Ionicons
+                  name={hablandoId === p.id ? 'stop-circle' : 'volume-high-outline'}
+                  size={22}
+                  color="#185FA5"
+                />
+              </Pressable>
+            </View>
 
             {p.citas?.length ? (
               <View style={styles.citas}>
@@ -121,7 +159,9 @@ const styles = StyleSheet.create({
   centralTexto: { fontSize: 18, lineHeight: 28, color: '#042C53', fontStyle: 'italic', fontFamily: 'serif' },
   intro: { fontSize: 16, lineHeight: 26, color: '#2C2C2A', marginTop: 16 },
   pregunta: { marginTop: 22 },
-  preguntaTexto: { fontSize: 16, lineHeight: 24, color: '#2C2C2A' },
+  preguntaHead: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  preguntaTexto: { flex: 1, fontSize: 16, lineHeight: 24, color: '#2C2C2A' },
+  vozBtn: { paddingTop: 2 },
   preguntaNum: { fontWeight: '600', color: '#185FA5' },
   citas: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 },
   cita: { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#B5D4F4', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 5 },
