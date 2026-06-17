@@ -19,6 +19,13 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="estudio"
+        options={{
+          title: 'Estudio',
+          tabBarIcon: ({ color, size }) => <Ionicons name="book-outline" color={color} size={size} />,
+        }}
+      />
+      <Tabs.Screen
         name="calendario"
         options={{
           title: 'Calendario',

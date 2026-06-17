@@ -54,3 +54,52 @@ export async function getTodosLosVersiculos(): Promise<VersiculoDia[]> {
   if (error) throw error;
   return (data as VersiculoDia[]) ?? [];
 }
+
+export type Leccion = {
+  id: number;
+  numero: number;
+  fecha: string;
+  serie: string | null;
+  titulo: string;
+  lectura_biblica: string | null;
+  versiculo_central_cita: string;
+  versiculo_central_texto: string | null;
+  introduccion: string;
+  semestre: string;
+};
+
+export type Pregunta = {
+  id: number;
+  leccion_id: number;
+  orden: number;
+  pregunta: string;
+  citas: string[];
+  nota: string | null;
+};
+
+export async function getLecciones(): Promise<Leccion[]> {
+  const { data, error } = await supabase.from('lecciones').select('*').order('numero');
+  if (error) throw error;
+  return (data as Leccion[]) ?? [];
+}
+
+export async function getLeccion(
+  numero: number
+): Promise<{ leccion: Leccion; preguntas: Pregunta[] } | null> {
+  const { data: l, error: e1 } = await supabase
+    .from('lecciones')
+    .select('*')
+    .eq('numero', numero)
+    .maybeSingle();
+  if (e1) throw e1;
+  if (!l) return null;
+
+  const { data: p, error: e2 } = await supabase
+    .from('lecciones_preguntas')
+    .select('*')
+    .eq('leccion_id', (l as Leccion).id)
+    .order('orden');
+  if (e2) throw e2;
+
+  return { leccion: l as Leccion, preguntas: (p as Pregunta[]) ?? [] };
+}

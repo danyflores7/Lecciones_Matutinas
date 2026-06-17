@@ -40,6 +40,11 @@ export function mesAbrev(fechaISO: string): string {
   return MESES_ABREV[Number(fechaISO.slice(5, 7)) - 1];
 }
 
+// '6 de junio'
+export function fechaDiaMes(fechaISO: string): string {
+  return `${diaDelMes(fechaISO)} de ${MESES[Number(fechaISO.slice(5, 7)) - 1]}`;
+}
+
 // '6:00 a.m.'
 export function horaTexto(hour: number, minute: number): string {
   const ampm = hour < 12 ? 'a.m.' : 'p.m.';

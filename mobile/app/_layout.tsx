@@ -12,6 +12,7 @@ export default function RootLayout() {
     >
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="memorizar" options={{ title: 'Memorizar', headerBackTitle: 'Atrás' }} />
+      <Stack.Screen name="leccion" options={{ title: 'Lección', headerBackTitle: 'Atrás' }} />
     </Stack>
   );
 }
