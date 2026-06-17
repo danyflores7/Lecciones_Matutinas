@@ -85,7 +85,7 @@ export async function getLecciones(): Promise<Leccion[]> {
 
 export async function getLeccion(
   numero: number
-): Promise<{ leccion: Leccion; preguntas: Pregunta[] } | null> {
+): Promise<{ leccion: Leccion; preguntas: Pregunta[]; citasTexto: Record<string, string> } | null> {
   const { data: l, error: e1 } = await supabase
     .from('lecciones')
     .select('*')
@@ -100,6 +100,21 @@ export async function getLeccion(
     .eq('leccion_id', (l as Leccion).id)
     .order('orden');
   if (e2) throw e2;
+  const preguntas = (p as Pregunta[]) ?? [];
 
-  return { leccion: l as Leccion, preguntas: (p as Pregunta[]) ?? [] };
+  // Carga de una vez el texto RV1909 de todas las citas de la lección (offline).
+  const todas = Array.from(new Set(preguntas.flatMap((q) => q.citas ?? [])));
+  const citasTexto: Record<string, string> = {};
+  if (todas.length) {
+    const { data: ct, error: e3 } = await supabase
+      .from('citas_texto')
+      .select('cita, texto')
+      .in('cita', todas);
+    if (e3) throw e3;
+    for (const row of (ct as { cita: string; texto: string }[]) ?? []) {
+      citasTexto[row.cita] = row.texto;
+    }
+  }
+
+  return { leccion: l as Leccion, preguntas, citasTexto };
 }
