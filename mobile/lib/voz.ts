@@ -22,41 +22,71 @@ export function citaParaVoz(cita: string): string {
   });
 }
 
-// Token para cancelar una secuencia en curso (al detener o iniciar otra).
-let token = 0;
+type Estado = { partes: string[]; idx: number; rate: number; onFin?: () => void };
 
-export function detenerVoz(): void {
-  token += 1;
-  Speech.stop();
+// token: invalida secuencias anteriores (al detener, pausar o iniciar otra).
+let token = 0;
+let estado: Estado | null = null;
+
+function decir(mi: number) {
+  if (mi !== token || !estado) return;
+  if (estado.idx >= estado.partes.length) {
+    const fin = estado.onFin;
+    estado = null;
+    fin?.();
+    return;
+  }
+  Speech.speak(estado.partes[estado.idx], {
+    language: 'es-MX',
+    rate: estado.rate,
+    onDone: () => {
+      if (mi === token && estado) {
+        estado.idx += 1;
+        decir(mi);
+      }
+    },
+    onError: () => {
+      if (mi === token && estado) {
+        estado.idx += 1;
+        decir(mi);
+      }
+    },
+  });
 }
 
-// Reproduce una lista de segmentos uno tras otro. Evita un único audio muy
-// largo (que en algunos dispositivos falla) hablando frase por frase y
-// encadenando con onDone. `onFin` se llama al terminar todos los segmentos.
+// Reproduce una lista de segmentos uno tras otro (evita un audio muy largo que
+// en algunos dispositivos falla). `onFin` se llama al terminar todos.
 export function reproducirPartes(
   partes: string[],
   opts: { rate?: number; onFin?: () => void } = {}
 ): void {
   token += 1;
-  const miToken = token;
   Speech.stop();
-
-  const limpias = partes.map((p) => (p ?? '').trim()).filter(Boolean);
-  const rate = opts.rate ?? 1.0;
-
-  const decir = (i: number) => {
-    if (miToken !== token) return; // se canceló o empezó otra reproducción
-    if (i >= limpias.length) {
-      opts.onFin?.();
-      return;
-    }
-    Speech.speak(limpias[i], {
-      language: 'es-MX',
-      rate,
-      onDone: () => decir(i + 1),
-      onError: () => decir(i + 1),
-    });
+  estado = {
+    partes: partes.map((p) => (p ?? '').trim()).filter(Boolean),
+    idx: 0,
+    rate: opts.rate ?? 1.0,
+    onFin: opts.onFin,
   };
+  decir(token);
+}
 
-  decir(0);
+// Pausa: corta el segmento actual y conserva la posición (al continuar se
+// vuelve a leer ese segmento desde el inicio).
+export function pausar(): void {
+  token += 1;
+  Speech.stop();
+}
+
+export function continuar(): void {
+  if (!estado) return;
+  token += 1;
+  Speech.stop();
+  decir(token);
+}
+
+export function detenerVoz(): void {
+  token += 1;
+  estado = null;
+  Speech.stop();
 }

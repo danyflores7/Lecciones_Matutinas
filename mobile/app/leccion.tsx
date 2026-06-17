@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { getLeccion, type Leccion, type Pregunta } from '../lib/supabase';
 import { fechaDiaMes } from '../lib/fechas';
-import { citaParaVoz, detenerVoz, reproducirPartes } from '../lib/voz';
+import { citaParaVoz, continuar, detenerVoz, pausar, reproducirPartes } from '../lib/voz';
 import { getVelocidad, setVelocidad } from '../lib/almacen';
 import { SelectorVelocidad } from '../components/SelectorVelocidad';
 
@@ -32,6 +32,7 @@ export default function LeccionDetalle() {
   const [loading, setLoading] = useState(true);
   const [abiertas, setAbiertas] = useState<Set<string>>(new Set());
   const [audioActivo, setAudioActivo] = useState<'todo' | number | null>(null);
+  const [pausado, setPausado] = useState(false);
   const [velocidad, setVel] = useState(1.0);
 
   useEffect(() => {
@@ -56,14 +57,24 @@ export default function LeccionDetalle() {
       return s;
     });
 
-  const reproducir = (id: 'todo' | number, partes: string[]) => {
-    if (audioActivo === id) {
-      detenerVoz();
-      setAudioActivo(null);
-      return;
+  const limpiarAudio = () => {
+    setAudioActivo(null);
+    setPausado(false);
+  };
+
+  const togglePausa = () => {
+    if (pausado) {
+      continuar();
+      setPausado(false);
+    } else {
+      pausar();
+      setPausado(true);
     }
-    setAudioActivo(id);
-    reproducirPartes(partes, { rate: velocidad, onFin: () => setAudioActivo(null) });
+  };
+
+  const detenerAudio = () => {
+    detenerVoz();
+    limpiarAudio();
   };
 
   const cambiarVelocidad = (v: number) => {
@@ -100,6 +111,22 @@ export default function LeccionDetalle() {
     return segs;
   };
 
+  const iniciarLeccion = () => {
+    setAudioActivo('todo');
+    setPausado(false);
+    reproducirPartes(segmentosLeccion(), { rate: velocidad, onFin: limpiarAudio });
+  };
+
+  const reproducirPregunta = (p: Pregunta) => {
+    if (audioActivo === p.id) {
+      detenerAudio();
+      return;
+    }
+    setAudioActivo(p.id);
+    setPausado(false);
+    reproducirPartes(segmentosDePregunta(p, citasTexto), { rate: velocidad, onFin: limpiarAudio });
+  };
+
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       {leccion.serie ? <Text style={styles.serie}>{leccion.serie}</Text> : null}
@@ -119,19 +146,32 @@ export default function LeccionDetalle() {
         ) : null}
       </View>
 
-      <Pressable
-        style={({ pressed }) => [styles.btnLeccion, pressed && styles.btnLeccionPressed]}
-        onPress={() => reproducir('todo', segmentosLeccion())}
-      >
-        <Ionicons
-          name={audioActivo === 'todo' ? 'stop-circle' : 'volume-high-outline'}
-          size={20}
-          color="#FFFFFF"
-        />
-        <Text style={styles.btnLeccionText}>
-          {audioActivo === 'todo' ? 'Detener' : 'Escuchar lección'}
-        </Text>
-      </Pressable>
+      {audioActivo === 'todo' ? (
+        <View style={styles.filaAudio}>
+          <Pressable
+            style={({ pressed }) => [styles.btnAudio, pressed && styles.btnLeccionPressed]}
+            onPress={togglePausa}
+          >
+            <Ionicons name={pausado ? 'play' : 'pause'} size={20} color="#FFFFFF" />
+            <Text style={styles.btnLeccionText}>{pausado ? 'Continuar' : 'Pausar'}</Text>
+          </Pressable>
+          <Pressable
+            style={({ pressed }) => [styles.btnAudioStop, pressed && styles.btnLeccionPressed]}
+            onPress={detenerAudio}
+          >
+            <Ionicons name="stop" size={20} color="#185FA5" />
+            <Text style={styles.btnAudioStopText}>Detener</Text>
+          </Pressable>
+        </View>
+      ) : (
+        <Pressable
+          style={({ pressed }) => [styles.btnLeccion, pressed && styles.btnLeccionPressed]}
+          onPress={iniciarLeccion}
+        >
+          <Ionicons name="volume-high-outline" size={20} color="#FFFFFF" />
+          <Text style={styles.btnLeccionText}>Escuchar lección</Text>
+        </Pressable>
+      )}
 
       <SelectorVelocidad value={velocidad} onChange={cambiarVelocidad} />
 
@@ -147,7 +187,7 @@ export default function LeccionDetalle() {
                 {p.pregunta}
               </Text>
               <Pressable
-                onPress={() => reproducir(p.id, segmentosDePregunta(p, citasTexto))}
+                onPress={() => reproducirPregunta(p)}
                 hitSlop={10}
                 style={styles.vozBtn}
               >
@@ -215,6 +255,30 @@ const styles = StyleSheet.create({
   },
   btnLeccionPressed: { opacity: 0.85 },
   btnLeccionText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600' },
+  filaAudio: { flexDirection: 'row', gap: 10, marginTop: 14 },
+  btnAudio: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#185FA5',
+    borderRadius: 14,
+    paddingVertical: 13,
+  },
+  btnAudioStop: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#185FA5',
+    borderRadius: 14,
+    paddingVertical: 12,
+  },
+  btnAudioStopText: { color: '#185FA5', fontSize: 16, fontWeight: '600' },
   intro: { fontSize: 16, lineHeight: 26, color: '#2C2C2A', marginTop: 16 },
   pregunta: { marginTop: 22 },
   preguntaHead: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
