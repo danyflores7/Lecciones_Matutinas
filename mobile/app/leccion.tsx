@@ -6,6 +6,7 @@ import * as Speech from 'expo-speech';
 
 import { getLeccion, type Leccion, type Pregunta } from '../lib/supabase';
 import { fechaDiaMes } from '../lib/fechas';
+import { citaParaVoz } from '../lib/voz';
 
 type Datos = { leccion: Leccion; preguntas: Pregunta[]; citasTexto: Record<string, string> };
 
@@ -14,7 +15,7 @@ export default function LeccionDetalle() {
   const [data, setData] = useState<Datos | null>(null);
   const [loading, setLoading] = useState(true);
   const [abiertas, setAbiertas] = useState<Set<string>>(new Set());
-  const [hablandoId, setHablandoId] = useState<number | null>(null);
+  const [audioActivo, setAudioActivo] = useState<'todo' | number | null>(null);
 
   // Detiene la voz al salir de la pantalla.
   useEffect(() => {
@@ -23,23 +24,31 @@ export default function LeccionDetalle() {
     };
   }, []);
 
-  const hablarPregunta = (p: Pregunta) => {
-    if (hablandoId === p.id) {
+  const reproducir = (id: 'todo' | number, texto: string) => {
+    if (audioActivo === id) {
       Speech.stop();
-      setHablandoId(null);
+      setAudioActivo(null);
       return;
     }
     Speech.stop();
-    const mapa = data?.citasTexto ?? {};
-    const versos = (p.citas ?? []).map((c) => mapa[c]).filter(Boolean);
-    const texto = [p.pregunta, ...versos, p.nota].filter(Boolean).join('. ');
-    setHablandoId(p.id);
+    setAudioActivo(id);
     Speech.speak(texto, {
       language: 'es-MX',
-      onDone: () => setHablandoId(null),
-      onStopped: () => setHablandoId(null),
-      onError: () => setHablandoId(null),
+      onDone: () => setAudioActivo(null),
+      onStopped: () => setAudioActivo(null),
+      onError: () => setAudioActivo(null),
     });
+  };
+
+  // Lee la pregunta, anuncia cada cita ("...capítulo X, versículo Y") con su texto, y la nota.
+  const textoDePregunta = (p: Pregunta, mapa: Record<string, string>) => {
+    const partes = [p.pregunta];
+    for (const c of p.citas ?? []) {
+      const t = mapa[c];
+      if (t) partes.push(`${citaParaVoz(c)}. ${t}`);
+    }
+    if (p.nota) partes.push(p.nota);
+    return partes.join('. ');
   };
 
   useEffect(() => {
@@ -74,6 +83,18 @@ export default function LeccionDetalle() {
 
   const { leccion, preguntas, citasTexto } = data;
 
+  const textoLeccion = () => {
+    const partes: string[] = [leccion.titulo];
+    partes.push(
+      `Versículo central. ${citaParaVoz(leccion.versiculo_central_cita)}. ${leccion.versiculo_central_texto ?? ''}`
+    );
+    partes.push(leccion.introduccion);
+    for (const p of preguntas) {
+      partes.push(`Pregunta ${p.orden}. ${textoDePregunta(p, citasTexto)}`);
+    }
+    return partes.join('. ');
+  };
+
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       {leccion.serie ? <Text style={styles.serie}>{leccion.serie}</Text> : null}
@@ -93,6 +114,20 @@ export default function LeccionDetalle() {
         ) : null}
       </View>
 
+      <Pressable
+        style={({ pressed }) => [styles.btnLeccion, pressed && styles.btnLeccionPressed]}
+        onPress={() => reproducir('todo', textoLeccion())}
+      >
+        <Ionicons
+          name={audioActivo === 'todo' ? 'stop-circle' : 'volume-high-outline'}
+          size={20}
+          color="#FFFFFF"
+        />
+        <Text style={styles.btnLeccionText}>
+          {audioActivo === 'todo' ? 'Detener' : 'Escuchar lección'}
+        </Text>
+      </Pressable>
+
       <Text style={styles.intro}>{leccion.introduccion}</Text>
 
       {preguntas.map((p) => {
@@ -104,9 +139,13 @@ export default function LeccionDetalle() {
                 <Text style={styles.preguntaNum}>{p.orden}. </Text>
                 {p.pregunta}
               </Text>
-              <Pressable onPress={() => hablarPregunta(p)} hitSlop={10} style={styles.vozBtn}>
+              <Pressable
+                onPress={() => reproducir(p.id, textoDePregunta(p, citasTexto))}
+                hitSlop={10}
+                style={styles.vozBtn}
+              >
                 <Ionicons
-                  name={hablandoId === p.id ? 'stop-circle' : 'volume-high-outline'}
+                  name={audioActivo === p.id ? 'stop-circle' : 'volume-high-outline'}
                   size={22}
                   color="#185FA5"
                 />
@@ -157,6 +196,18 @@ const styles = StyleSheet.create({
   central: { backgroundColor: '#E6F1FB', borderRadius: 16, padding: 18, marginTop: 16 },
   centralLabel: { fontSize: 13, fontWeight: '600', color: '#0C447C', marginBottom: 8 },
   centralTexto: { fontSize: 18, lineHeight: 28, color: '#042C53', fontStyle: 'italic', fontFamily: 'serif' },
+  btnLeccion: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#185FA5',
+    borderRadius: 14,
+    paddingVertical: 13,
+    marginTop: 14,
+  },
+  btnLeccionPressed: { opacity: 0.85 },
+  btnLeccionText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600' },
   intro: { fontSize: 16, lineHeight: 26, color: '#2C2C2A', marginTop: 16 },
   pregunta: { marginTop: 22 },
   preguntaHead: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
