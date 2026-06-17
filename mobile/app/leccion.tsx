@@ -2,13 +2,29 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import * as Speech from 'expo-speech';
 
 import { getLeccion, type Leccion, type Pregunta } from '../lib/supabase';
 import { fechaDiaMes } from '../lib/fechas';
-import { citaParaVoz } from '../lib/voz';
+import { citaParaVoz, detenerVoz, reproducirPartes } from '../lib/voz';
+import { getVelocidad, setVelocidad } from '../lib/almacen';
+import { SelectorVelocidad } from '../components/SelectorVelocidad';
 
 type Datos = { leccion: Leccion; preguntas: Pregunta[]; citasTexto: Record<string, string> };
+
+// Segmentos de audio de una pregunta: la pregunta, cada cita anunciada + su
+// texto, y la nota (precedida por "Nota").
+function segmentosDePregunta(p: Pregunta, mapa: Record<string, string>): string[] {
+  const segs: string[] = [p.pregunta];
+  for (const c of p.citas ?? []) {
+    const t = mapa[c];
+    if (t) {
+      segs.push(`${citaParaVoz(c)}.`);
+      segs.push(t);
+    }
+  }
+  if (p.nota) segs.push(`Nota. ${p.nota}`);
+  return segs;
+}
 
 export default function LeccionDetalle() {
   const { numero } = useLocalSearchParams<{ numero?: string }>();
@@ -16,47 +32,22 @@ export default function LeccionDetalle() {
   const [loading, setLoading] = useState(true);
   const [abiertas, setAbiertas] = useState<Set<string>>(new Set());
   const [audioActivo, setAudioActivo] = useState<'todo' | number | null>(null);
-
-  // Detiene la voz al salir de la pantalla.
-  useEffect(() => {
-    return () => {
-      Speech.stop();
-    };
-  }, []);
-
-  const reproducir = (id: 'todo' | number, texto: string) => {
-    if (audioActivo === id) {
-      Speech.stop();
-      setAudioActivo(null);
-      return;
-    }
-    Speech.stop();
-    setAudioActivo(id);
-    Speech.speak(texto, {
-      language: 'es-MX',
-      onDone: () => setAudioActivo(null),
-      onStopped: () => setAudioActivo(null),
-      onError: () => setAudioActivo(null),
-    });
-  };
-
-  // Lee la pregunta, anuncia cada cita ("...capítulo X, versículo Y") con su texto, y la nota.
-  const textoDePregunta = (p: Pregunta, mapa: Record<string, string>) => {
-    const partes = [p.pregunta];
-    for (const c of p.citas ?? []) {
-      const t = mapa[c];
-      if (t) partes.push(`${citaParaVoz(c)}. ${t}`);
-    }
-    if (p.nota) partes.push(p.nota);
-    return partes.join('. ');
-  };
+  const [velocidad, setVel] = useState(1.0);
 
   useEffect(() => {
     (async () => {
       if (numero) setData(await getLeccion(Number(numero)));
+      setVel(await getVelocidad());
       setLoading(false);
     })();
   }, [numero]);
+
+  // Detiene la voz al salir de la pantalla.
+  useEffect(() => {
+    return () => {
+      detenerVoz();
+    };
+  }, []);
 
   const toggle = (key: string) =>
     setAbiertas((prev) => {
@@ -64,6 +55,21 @@ export default function LeccionDetalle() {
       s.has(key) ? s.delete(key) : s.add(key);
       return s;
     });
+
+  const reproducir = (id: 'todo' | number, partes: string[]) => {
+    if (audioActivo === id) {
+      detenerVoz();
+      setAudioActivo(null);
+      return;
+    }
+    setAudioActivo(id);
+    reproducirPartes(partes, { rate: velocidad, onFin: () => setAudioActivo(null) });
+  };
+
+  const cambiarVelocidad = (v: number) => {
+    setVel(v);
+    setVelocidad(v);
+  };
 
   if (loading) {
     return (
@@ -83,16 +89,15 @@ export default function LeccionDetalle() {
 
   const { leccion, preguntas, citasTexto } = data;
 
-  const textoLeccion = () => {
-    const partes: string[] = [leccion.titulo];
-    partes.push(
-      `Versículo central. ${citaParaVoz(leccion.versiculo_central_cita)}. ${leccion.versiculo_central_texto ?? ''}`
-    );
-    partes.push(leccion.introduccion);
+  const segmentosLeccion = (): string[] => {
+    const segs: string[] = [leccion.titulo, 'Versículo central.', `${citaParaVoz(leccion.versiculo_central_cita)}.`];
+    if (leccion.versiculo_central_texto) segs.push(leccion.versiculo_central_texto);
+    segs.push(leccion.introduccion);
     for (const p of preguntas) {
-      partes.push(`Pregunta ${p.orden}. ${textoDePregunta(p, citasTexto)}`);
+      segs.push(`Pregunta ${p.orden}.`);
+      segs.push(...segmentosDePregunta(p, citasTexto));
     }
-    return partes.join('. ');
+    return segs;
   };
 
   return (
@@ -116,7 +121,7 @@ export default function LeccionDetalle() {
 
       <Pressable
         style={({ pressed }) => [styles.btnLeccion, pressed && styles.btnLeccionPressed]}
-        onPress={() => reproducir('todo', textoLeccion())}
+        onPress={() => reproducir('todo', segmentosLeccion())}
       >
         <Ionicons
           name={audioActivo === 'todo' ? 'stop-circle' : 'volume-high-outline'}
@@ -127,6 +132,8 @@ export default function LeccionDetalle() {
           {audioActivo === 'todo' ? 'Detener' : 'Escuchar lección'}
         </Text>
       </Pressable>
+
+      <SelectorVelocidad value={velocidad} onChange={cambiarVelocidad} />
 
       <Text style={styles.intro}>{leccion.introduccion}</Text>
 
@@ -140,7 +147,7 @@ export default function LeccionDetalle() {
                 {p.pregunta}
               </Text>
               <Pressable
-                onPress={() => reproducir(p.id, textoDePregunta(p, citasTexto))}
+                onPress={() => reproducir(p.id, segmentosDePregunta(p, citasTexto))}
                 hitSlop={10}
                 style={styles.vozBtn}
               >

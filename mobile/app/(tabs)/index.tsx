@@ -17,19 +17,20 @@ import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { captureRef } from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
-import * as Speech from 'expo-speech';
-
-import { citaParaVoz } from '../../lib/voz';
+import { citaParaVoz, detenerVoz, reproducirPartes } from '../../lib/voz';
+import { SelectorVelocidad } from '../../components/SelectorVelocidad';
 
 import { getVersiculoPorFecha, type VersiculoDia } from '../../lib/supabase';
 import { fechaHoyISO, fechaLarga, horaTexto } from '../../lib/fechas';
 import {
   getHoraRecordatorio,
   getRecordatorioActivo,
+  getVelocidad,
   type Hora,
   registrarVisitaYRacha,
   setHoraRecordatorio,
   setRecordatorioActivo,
+  setVelocidad,
 } from '../../lib/almacen';
 import {
   cancelarRecordatorio,
@@ -51,6 +52,7 @@ export default function Inicio() {
   const [showPicker, setShowPicker] = useState(false);
   const [racha, setRacha] = useState(0);
   const [hablando, setHablando] = useState(false);
+  const [velocidad, setVel] = useState(1.0);
 
   const cargar = useCallback(async () => {
     try {
@@ -68,6 +70,7 @@ export default function Inicio() {
       await cargar();
       setRecordatorio(await getRecordatorioActivo());
       setHora(await getHoraRecordatorio());
+      setVel(await getVelocidad());
       setLoading(false);
     })();
   }, [cargar]);
@@ -116,24 +119,27 @@ export default function Inicio() {
 
   const alternarVoz = useCallback(() => {
     if (hablando) {
-      Speech.stop();
+      detenerVoz();
       setHablando(false);
       return;
     }
     if (!verse?.texto) return;
     setHablando(true);
-    Speech.speak(`${citaParaVoz(verse.cita)}. ${verse.texto}`, {
-      language: 'es-MX',
-      onDone: () => setHablando(false),
-      onStopped: () => setHablando(false),
-      onError: () => setHablando(false),
+    reproducirPartes([`${citaParaVoz(verse.cita)}.`, verse.texto], {
+      rate: velocidad,
+      onFin: () => setHablando(false),
     });
-  }, [hablando, verse]);
+  }, [hablando, verse, velocidad]);
+
+  const cambiarVelocidad = useCallback((v: number) => {
+    setVel(v);
+    setVelocidad(v);
+  }, []);
 
   // Detiene la voz al salir de la pantalla.
   useEffect(() => {
     return () => {
-      Speech.stop();
+      detenerVoz();
     };
   }, []);
 
@@ -211,6 +217,8 @@ export default function Inicio() {
                 <Text style={styles.btnSecundarioText}>Compartir</Text>
               </Pressable>
             </View>
+
+            <SelectorVelocidad value={velocidad} onChange={cambiarVelocidad} />
 
             <View style={styles.recordatorio}>
               <View style={styles.recordatorioTexto}>

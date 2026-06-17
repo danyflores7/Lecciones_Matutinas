@@ -4,6 +4,17 @@ import { fechaHoyISO, fechaRelativaISO } from './fechas';
 const K_RECORDATORIO = 'recordatorio_activo';
 const K_HORA = 'recordatorio_hora'; // 'H:MM'
 const K_RACHA = 'racha'; // JSON { ultima: 'YYYY-MM-DD', dias: number }
+const K_VELOCIDAD = 'velocidad_voz'; // número (1.0 = normal)
+
+export async function getVelocidad(): Promise<number> {
+  const raw = await AsyncStorage.getItem(K_VELOCIDAD);
+  const v = raw ? parseFloat(raw) : NaN;
+  return Number.isFinite(v) ? v : 1.0;
+}
+
+export async function setVelocidad(v: number): Promise<void> {
+  await AsyncStorage.setItem(K_VELOCIDAD, String(v));
+}
 
 export type Hora = { hour: number; minute: number };
 
