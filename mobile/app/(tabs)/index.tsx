@@ -181,7 +181,7 @@ export default function Inicio() {
         <View style={styles.header}>
           <Image source={require('../../assets/logo-256.png')} style={styles.logo} resizeMode="contain" />
           <View style={styles.brandTextos}>
-            <Text style={styles.brand}>Matutinas</Text>
+            <Text style={styles.brand}>Lecciones y Matutinas</Text>
             <Text style={styles.brandSub}>Primer semestre 2026</Text>
           </View>
           {racha > 0 ? (
@@ -287,7 +287,7 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 20 },
   logo: { width: 52, height: 52 },
   brandTextos: { flex: 1 },
-  brand: { fontSize: 26, fontWeight: '600', color: '#042C53' },
+  brand: { fontSize: 21, fontWeight: '600', color: '#042C53', lineHeight: 25 },
   brandSub: { fontSize: 14, color: '#5F5E5A', marginTop: 2 },
   racha: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#FAEEDA', paddingHorizontal: 11, paddingVertical: 6, borderRadius: 999 },
   rachaText: { fontSize: 13, fontWeight: '600', color: '#854F0B' },
