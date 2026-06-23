@@ -15,3 +15,9 @@ mobile/web-build/
 
 # APKs generados
 *.apk
+
+# Llave de subida y sus claves (NUNCA subir)
+*.jks
+*.keystore
+CLAVES-keystore.txt
+*.aab
