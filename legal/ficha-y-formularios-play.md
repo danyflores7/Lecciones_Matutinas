@@ -4,7 +4,7 @@ Hoja de apoyo para copiar/pegar en la Play Console. Ajusta lo que esté entre [c
 
 ## 1. Ficha de la tienda (Store listing)
 
-- **Nombre de la app** (máx. 30 caracteres): `Matutinas — Escuela Sabática`
+- **Nombre de la app** (máx. 30 caracteres): `Lecciones y Matutinas`
 - **Descripción corta** (máx. 80):
   `Versículo del día y lecciones de Escuela Sabática. Funciona sin internet.`
 - **Descripción completa** (máx. 4000):
