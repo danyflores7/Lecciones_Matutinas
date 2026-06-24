@@ -10,8 +10,8 @@ Hoja de apoyo para copiar/pegar en la Play Console. Ajusta lo que esté entre [c
 - **Descripción completa** (máx. 4000):
 
 ```
-Matutinas es la app devocional de la Iglesia de Cristo Restaurada del 7° Día para
-acompañar tu estudio diario de la Palabra.
+Lecciones y Matutinas es la app devocional de la Iglesia de Cristo Restaurada del 7°
+Día para acompañar tu estudio diario de la Palabra.
 
 • Versículo del día: cada día su versículo (Reina-Valera 1909), con el tema de la
   semana, tal como el cuaderno de matutinas.
@@ -28,9 +28,9 @@ Sin anuncios. Sin registro. Una herramienta sencilla para crecer en la Palabra.
 
 - **Categoría de la app:** `Estilo de vida` (alternativa: `Educación` o `Libros y obras de consulta`)
 - **Etiquetas:** Biblia, devocional, Escuela Sabática, versículo del día
-- **Correo de contacto:** [tu-correo@ejemplo.com]
+- **Correo de contacto:** `danyflorojas@gmail.com`
 - **Sitio web** (opcional): [puedes dejarlo vacío o poner el de la iglesia]
-- **Política de privacidad (URL):** [la URL pública donde subas politica-de-privacidad.md]
+- **Política de privacidad (URL):** `https://danyflores7.github.io/Lecciones_Matutinas/privacidad.html`
 
 ### Gráficos que pide Play
 - **Ícono:** 512 × 512 px (PNG). → usa el logo (`mobile/assets/logo.png`, ajústalo a 512).

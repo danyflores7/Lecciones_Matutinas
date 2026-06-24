@@ -13,6 +13,7 @@
     },
     "android": {
       "package": "com.appiglesia.matutinas",
+      "versionCode": 2,
       "adaptiveIcon": {
         "backgroundColor": "#FFFFFF",
         "foregroundImage": "./assets/logo-adaptive.png"
