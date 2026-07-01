@@ -182,7 +182,7 @@ export default function Inicio() {
           <Image source={require('../../assets/logo-256.png')} style={styles.logo} resizeMode="contain" />
           <View style={styles.brandTextos}>
             <Text style={styles.brand}>Lecciones y Matutinas</Text>
-            <Text style={styles.brandSub}>Primer semestre 2026</Text>
+            <Text style={styles.brandSub}>Año 2026</Text>
           </View>
           {racha > 0 ? (
             <View style={styles.racha}>
@@ -270,7 +270,7 @@ export default function Inicio() {
           <View style={styles.centered}>
             <Text style={styles.vacioTitulo}>No hay versículo para hoy</Text>
             <Text style={styles.vacioSub}>
-              El plan cargado va del 1 de enero al 30 de junio de 2026. Revisa el Calendario.
+              El plan cargado va del 1 de enero al 31 de diciembre de 2026. Revisa el Calendario.
             </Text>
           </View>
         )}
