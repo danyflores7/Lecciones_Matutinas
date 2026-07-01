@@ -28,7 +28,7 @@ function segmentosDePregunta(p: Pregunta, mapa: Record<string, string>): string[
 }
 
 export default function LeccionDetalle() {
-  const { numero } = useLocalSearchParams<{ numero?: string }>();
+  const { fecha } = useLocalSearchParams<{ fecha?: string }>();
   const [data, setData] = useState<Datos | null>(null);
   const [loading, setLoading] = useState(true);
   const [abiertas, setAbiertas] = useState<Set<string>>(new Set());
@@ -38,12 +38,12 @@ export default function LeccionDetalle() {
 
   useEffect(() => {
     (async () => {
-      if (numero) {
-        const clave = `leccion:${numero}`;
+      if (fecha) {
+        const clave = `leccion:${fecha}`;
         const cacheado = await leerCache<Datos>(clave);
         if (cacheado) setData(cacheado);
         try {
-          const fresca = await getLeccion(Number(numero));
+          const fresca = await getLeccion(fecha);
           if (fresca) {
             setData(fresca);
             guardarCache(clave, fresca);
@@ -55,7 +55,7 @@ export default function LeccionDetalle() {
       setVel(await getVelocidad());
       setLoading(false);
     })();
-  }, [numero]);
+  }, [fecha]);
 
   // Detiene la voz al salir de la pantalla.
   useEffect(() => {

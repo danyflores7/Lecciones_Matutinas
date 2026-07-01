@@ -78,18 +78,18 @@ export type Pregunta = {
 };
 
 export async function getLecciones(): Promise<Leccion[]> {
-  const { data, error } = await supabase.from('lecciones').select('*').order('numero');
+  const { data, error } = await supabase.from('lecciones').select('*').order('fecha');
   if (error) throw error;
   return (data as Leccion[]) ?? [];
 }
 
 export async function getLeccion(
-  numero: number
+  fecha: string
 ): Promise<{ leccion: Leccion; preguntas: Pregunta[]; citasTexto: Record<string, string> } | null> {
   const { data: l, error: e1 } = await supabase
     .from('lecciones')
     .select('*')
-    .eq('numero', numero)
+    .eq('fecha', fecha)
     .maybeSingle();
   if (e1) throw e1;
   if (!l) return null;
