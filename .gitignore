@@ -16,6 +16,9 @@ mobile/web-build/
 # APKs generados
 *.apk
 
+# Audio generado (se publica en el branch 'audio' para el CDN, no en main)
+tools/gen-audio/out/
+
 # Llave de subida y sus claves (NUNCA subir)
 *.jks
 *.keystore

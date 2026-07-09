@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { getTodosLosVersiculos, type VersiculoDia } from '../../lib/supabase';
 import { diaDelMes, fechaHoyISO, mesAbrev, MESES } from '../../lib/fechas';
 import { guardarCache, leerCache } from '../../lib/cache';
+import { getVersiculosLocal } from '../../lib/contenido';
 
 type Grupo = { tema: string; dias: VersiculoDia[] };
 type Mes = { key: string; label: string; total: number; grupos: Grupo[] };
@@ -32,15 +33,17 @@ export default function Calendario() {
 
   useEffect(() => {
     (async () => {
-      const cacheados = await leerCache<VersiculoDia[]>('versiculos_todos');
-      if (cacheados) setItems(cacheados);
+      const local = await getVersiculosLocal();
+      const cacheados = local.length ? local : await leerCache<VersiculoDia[]>('versiculos_todos');
+      if (cacheados && cacheados.length) setItems(cacheados);
       try {
         const frescos = await getTodosLosVersiculos();
         setItems(frescos);
         guardarCache('versiculos_todos', frescos);
         setError(null);
       } catch (e: any) {
-        if (!cacheados) setError(e?.message ?? 'No se pudieron cargar los versículos.');
+        if (!cacheados || !cacheados.length)
+          setError(e?.message ?? 'No se pudieron cargar los versículos.');
       }
       setLoading(false);
     })();

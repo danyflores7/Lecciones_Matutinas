@@ -51,3 +51,27 @@ export function horaTexto(hour: number, minute: number): string {
   const h12 = hour % 12 === 0 ? 12 : hour % 12;
   return `${h12}:${String(minute).padStart(2, '0')} ${ampm}`;
 }
+
+// Una fecha ISO desplazada N días (respecto a esa fecha, no a hoy).
+export function sumarDias(fechaISO: string, n: number): string {
+  const d = new Date(`${fechaISO}T00:00:00`);
+  d.setDate(d.getDate() + n);
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${mm}-${dd}`;
+}
+
+// Las 7 fechas ISO de la "semana en curso": la fecha base (hoy por defecto) y
+// los 6 días siguientes. Se usa para decidir qué audios descargar por semana.
+export function fechasDeLaSemana(fechaISO?: string): string[] {
+  const base = fechaISO ? new Date(`${fechaISO}T00:00:00`) : new Date();
+  const out: string[] = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(base);
+    d.setDate(d.getDate() + i);
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    out.push(`${d.getFullYear()}-${mm}-${dd}`);
+  }
+  return out;
+}

@@ -118,3 +118,23 @@ export async function getLeccion(
 
   return { leccion: l as Leccion, preguntas, citasTexto };
 }
+
+// Todas las preguntas de todas las lecciones (para el paquete offline).
+export async function getTodasLasPreguntas(): Promise<Pregunta[]> {
+  const { data, error } = await supabase
+    .from('lecciones_preguntas')
+    .select('*')
+    .order('leccion_id')
+    .order('orden');
+  if (error) throw error;
+  return (data as Pregunta[]) ?? [];
+}
+
+// Todos los textos RV1909 citados (mapa cita -> texto) para el paquete offline.
+export async function getTodasLasCitas(): Promise<Record<string, string>> {
+  const { data, error } = await supabase.from('citas_texto').select('cita, texto');
+  if (error) throw error;
+  const out: Record<string, string> = {};
+  for (const row of (data as { cita: string; texto: string }[]) ?? []) out[row.cita] = row.texto;
+  return out;
+}

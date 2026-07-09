@@ -5,27 +5,14 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { getLeccion, type Leccion, type Pregunta } from '../lib/supabase';
 import { fechaDiaMes } from '../lib/fechas';
-import { citaParaVoz, continuar, detenerVoz, pausar, reproducirPartes } from '../lib/voz';
+import { continuar, detenerVoz, pausar, reproducirPartes } from '../lib/voz';
+import { segmentosDePregunta, segmentosLeccion } from '../lib/segmentos';
+import { getLeccionLocal } from '../lib/contenido';
 import { getVelocidad, setVelocidad } from '../lib/almacen';
 import { guardarCache, leerCache } from '../lib/cache';
 import { SelectorVelocidad } from '../components/SelectorVelocidad';
 
 type Datos = { leccion: Leccion; preguntas: Pregunta[]; citasTexto: Record<string, string> };
-
-// Segmentos de audio de una pregunta: la pregunta, cada cita anunciada + su
-// texto, y la nota (precedida por "Nota").
-function segmentosDePregunta(p: Pregunta, mapa: Record<string, string>): string[] {
-  const segs: string[] = [p.pregunta];
-  for (const c of p.citas ?? []) {
-    const t = mapa[c];
-    if (t) {
-      segs.push(`${citaParaVoz(c)}.`);
-      segs.push(t);
-    }
-  }
-  if (p.nota) segs.push(`Nota. ${p.nota}`);
-  return segs;
-}
 
 export default function LeccionDetalle() {
   const { fecha } = useLocalSearchParams<{ fecha?: string }>();
@@ -40,8 +27,8 @@ export default function LeccionDetalle() {
     (async () => {
       if (fecha) {
         const clave = `leccion:${fecha}`;
-        const cacheado = await leerCache<Datos>(clave);
-        if (cacheado) setData(cacheado);
+        const local = (await getLeccionLocal(fecha)) ?? (await leerCache<Datos>(clave));
+        if (local) setData(local);
         try {
           const fresca = await getLeccion(fecha);
           if (fresca) {
@@ -114,21 +101,13 @@ export default function LeccionDetalle() {
 
   const { leccion, preguntas, citasTexto } = data;
 
-  const segmentosLeccion = (): string[] => {
-    const segs: string[] = [leccion.titulo, 'Versículo central.', `${citaParaVoz(leccion.versiculo_central_cita)}.`];
-    if (leccion.versiculo_central_texto) segs.push(leccion.versiculo_central_texto);
-    segs.push(leccion.introduccion);
-    for (const p of preguntas) {
-      segs.push(`Pregunta ${p.orden}.`);
-      segs.push(...segmentosDePregunta(p, citasTexto));
-    }
-    return segs;
-  };
-
   const iniciarLeccion = () => {
     setAudioActivo('todo');
     setPausado(false);
-    reproducirPartes(segmentosLeccion(), { rate: velocidad, onFin: limpiarAudio });
+    reproducirPartes(segmentosLeccion(leccion, preguntas, citasTexto), {
+      rate: velocidad,
+      onFin: limpiarAudio,
+    });
   };
 
   const reproducirPregunta = (p: Pregunta) => {

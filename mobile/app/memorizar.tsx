@@ -5,6 +5,7 @@ import { useLocalSearchParams } from 'expo-router';
 import { getVersiculoPorFecha, type VersiculoDia } from '../lib/supabase';
 import { fechaHoyISO, fechaLarga } from '../lib/fechas';
 import { guardarCache, leerCache } from '../lib/cache';
+import { getVersiculoLocal } from '../lib/contenido';
 
 type Nivel = 'facil' | 'medio' | 'dificil';
 
@@ -31,8 +32,9 @@ export default function Memorizar() {
 
   useEffect(() => {
     (async () => {
-      const cacheado = await leerCache<VersiculoDia>(`verse:${fecha}`);
-      if (cacheado) setVerse(cacheado);
+      const local =
+        (await getVersiculoLocal(fecha)) ?? (await leerCache<VersiculoDia>(`verse:${fecha}`));
+      if (local) setVerse(local);
       try {
         const v = await getVersiculoPorFecha(fecha);
         if (v) {

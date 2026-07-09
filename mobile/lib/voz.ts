@@ -1,25 +1,19 @@
+import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from 'expo-audio';
 import * as Speech from 'expo-speech';
 
-// Convierte una cita a una forma hablada que el lector de voz no confunda con una hora,
-// usando singular/plural y "al" (rango) o "y" (lista) según corresponda:
-//   "Hechos 4:19"        -> "Hechos capítulo 4, versículo 19"
-//   "Santiago 2:14-17"   -> "Santiago capítulo 2, versículos 14 al 17"
-//   "Romanos 5:1, 2"     -> "Romanos capítulo 5, versículos 1 y 2"
-export function citaParaVoz(cita: string): string {
-  return cita.replace(/(\d+):([\d,\-\s]+)/, (_m, cap: string, vspec: string) => {
-    const spec = vspec.trim();
+import { rutaLocalAudioParaTexto } from './audio';
 
-    const rango = spec.match(/^(\d+)\s*-\s*(\d+)$/);
-    if (rango) return `capítulo ${cap}, versículos ${rango[1]} al ${rango[2]}`;
+// citaParaVoz se movió a ./segmentos (compartido con el generador de audio).
+// Se re-exporta aquí para no romper las importaciones existentes.
+export { citaParaVoz } from './segmentos';
 
-    const lista = spec.split(',').map((s) => s.trim()).filter(Boolean);
-    if (lista.length > 1) {
-      const ultimo = lista.pop();
-      return `capítulo ${cap}, versículos ${lista.join(', ')} y ${ultimo}`;
-    }
-
-    return `capítulo ${cap}, versículo ${spec}`;
-  });
+// Configura el audio para que suene aunque el teléfono esté en silencio (iOS).
+export async function prepararAudio(): Promise<void> {
+  try {
+    await setAudioModeAsync({ playsInSilentMode: true, shouldPlayInBackground: false });
+  } catch {
+    // no crítico
+  }
 }
 
 type Estado = { partes: string[]; idx: number; rate: number; onFin?: () => void };
@@ -27,18 +21,23 @@ type Estado = { partes: string[]; idx: number; rate: number; onFin?: () => void 
 // token: invalida secuencias anteriores (al detener, pausar o iniciar otra).
 let token = 0;
 let estado: Estado | null = null;
+let player: AudioPlayer | null = null;
 
-function decir(mi: number) {
-  if (mi !== token || !estado) return;
-  if (estado.idx >= estado.partes.length) {
-    const fin = estado.onFin;
-    estado = null;
-    fin?.();
-    return;
+function liberarPlayer() {
+  if (player) {
+    try {
+      player.remove();
+    } catch {
+      // ignorar
+    }
+    player = null;
   }
-  Speech.speak(estado.partes[estado.idx], {
+}
+
+function hablarTTS(mi: number, texto: string) {
+  Speech.speak(texto, {
     language: 'es-MX',
-    rate: estado.rate,
+    rate: estado?.rate ?? 1.0,
     onDone: () => {
       if (mi === token && estado) {
         estado.idx += 1;
@@ -54,6 +53,57 @@ function decir(mi: number) {
   });
 }
 
+async function decir(mi: number) {
+  if (mi !== token || !estado) return;
+  if (estado.idx >= estado.partes.length) {
+    const fin = estado.onFin;
+    estado = null;
+    fin?.();
+    return;
+  }
+  const texto = estado.partes[estado.idx];
+
+  let uri: string | null = null;
+  try {
+    uri = await rutaLocalAudioParaTexto(texto);
+  } catch {
+    uri = null;
+  }
+  // La secuencia pudo cancelarse mientras calculábamos el hash/archivo.
+  if (mi !== token || !estado) return;
+
+  // Sin mp3 descargado: voz del sistema (respaldo).
+  if (!uri) {
+    hablarTTS(mi, texto);
+    return;
+  }
+
+  // Con mp3: voz neural pre-grabada. Si algo falla, cae a la voz del sistema.
+  liberarPlayer();
+  try {
+    const p = createAudioPlayer({ uri });
+    player = p;
+    p.setPlaybackRate(estado.rate, 'high');
+    let avanzado = false;
+    const sub = p.addListener('playbackStatusUpdate', (st) => {
+      if (mi !== token) return;
+      if (st.didJustFinish && !avanzado) {
+        avanzado = true;
+        sub.remove();
+        liberarPlayer();
+        if (estado) {
+          estado.idx += 1;
+          decir(mi);
+        }
+      }
+    });
+    p.play();
+  } catch {
+    liberarPlayer();
+    hablarTTS(mi, texto);
+  }
+}
+
 // Reproduce una lista de segmentos uno tras otro (evita un audio muy largo que
 // en algunos dispositivos falla). `onFin` se llama al terminar todos.
 export function reproducirPartes(
@@ -62,6 +112,7 @@ export function reproducirPartes(
 ): void {
   token += 1;
   Speech.stop();
+  liberarPlayer();
   estado = {
     partes: partes.map((p) => (p ?? '').trim()).filter(Boolean),
     idx: 0,
@@ -76,12 +127,18 @@ export function reproducirPartes(
 export function pausar(): void {
   token += 1;
   Speech.stop();
+  try {
+    player?.pause();
+  } catch {
+    // ignorar
+  }
 }
 
 export function continuar(): void {
   if (!estado) return;
   token += 1;
   Speech.stop();
+  liberarPlayer();
   decir(token);
 }
 
@@ -89,4 +146,5 @@ export function detenerVoz(): void {
   token += 1;
   estado = null;
   Speech.stop();
+  liberarPlayer();
 }

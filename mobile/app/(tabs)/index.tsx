@@ -18,12 +18,14 @@ import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { captureRef } from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
-import { citaParaVoz, detenerVoz, reproducirPartes } from '../../lib/voz';
+import { detenerVoz, reproducirPartes } from '../../lib/voz';
+import { segmentosMatutina } from '../../lib/segmentos';
 import { SelectorVelocidad } from '../../components/SelectorVelocidad';
 
 import { getVersiculoPorFecha, type VersiculoDia } from '../../lib/supabase';
 import { fechaHoyISO, fechaLarga, horaTexto } from '../../lib/fechas';
 import { guardarCache, leerCache } from '../../lib/cache';
+import { getVersiculoLocal } from '../../lib/contenido';
 import {
   getHoraRecordatorio,
   getRecordatorioActivo,
@@ -58,24 +60,27 @@ export default function Inicio() {
 
   const cargar = useCallback(async () => {
     const hoy = fechaHoyISO();
-    const cacheado = await leerCache<VersiculoDia>(`verse:${hoy}`);
-    if (cacheado) {
-      setVerse(cacheado);
+    // Primero lo que ya está en el teléfono: el paquete offline completo o, si
+    // no, la caché por día. Así funciona sin red aunque nunca se haya abierto.
+    const local =
+      (await getVersiculoLocal(hoy)) ?? (await leerCache<VersiculoDia>(`verse:${hoy}`));
+    if (local) {
+      setVerse(local);
       setError(null);
     }
-    let hayVerso = !!cacheado;
+    let hayVerso = !!local;
     try {
       const v = await getVersiculoPorFecha(hoy);
       if (v) {
         setVerse(v);
         guardarCache(`verse:${hoy}`, v);
         hayVerso = true;
-      } else if (!cacheado) {
+      } else if (!local) {
         setVerse(null);
       }
       setError(null);
     } catch {
-      if (!cacheado) setError('Sin conexión. Conéctate una vez para ver el versículo de hoy.');
+      if (!local) setError('Sin conexión. Conéctate una vez para ver el versículo de hoy.');
     }
     if (hayVerso) setRacha(await registrarVisitaYRacha());
   }, []);
@@ -140,7 +145,7 @@ export default function Inicio() {
     }
     if (!verse?.texto) return;
     setHablando(true);
-    reproducirPartes([`${citaParaVoz(verse.cita)}.`, verse.texto], {
+    reproducirPartes(segmentosMatutina(verse), {
       rate: velocidad,
       onFin: () => setHablando(false),
     });
@@ -193,6 +198,16 @@ export default function Inicio() {
             </View>
           ) : null}
         </View>
+
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Abrir el modo por voz para escuchar y navegar hablando"
+          style={({ pressed }) => [styles.vozModoBtn, pressed && styles.btnPressed]}
+          onPress={() => router.push('/asistente')}
+        >
+          <Ionicons name="mic" size={22} color="#FFFFFF" />
+          <Text style={styles.vozModoText}>Modo por voz</Text>
+        </Pressable>
 
         {loading ? (
           <View style={styles.centered}>
@@ -252,6 +267,15 @@ export default function Inicio() {
                 trackColor={{ true: '#185FA5', false: '#D3D1C7' }}
               />
             </View>
+
+            <Pressable
+              style={({ pressed }) => [styles.ajustesRow, pressed && styles.btnPressed]}
+              onPress={() => router.push('/ajustes')}
+            >
+              <Ionicons name="cloud-download-outline" size={20} color="#185FA5" />
+              <Text style={styles.ajustesText}>Audio sin conexión</Text>
+              <Ionicons name="chevron-forward" size={18} color="#B4B2A9" />
+            </Pressable>
 
             {showPicker ? (
               Platform.OS === 'ios' ? (
@@ -338,6 +362,28 @@ const styles = StyleSheet.create({
   recordatorioTitulo: { fontSize: 15, fontWeight: '600', color: '#2C2C2A' },
   recordatorioSub: { fontSize: 13, color: '#5F5E5A', marginTop: 3, lineHeight: 18 },
   cambiar: { fontSize: 13, fontWeight: '600', color: '#185FA5', marginTop: 6 },
+  ajustesRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    marginTop: 12,
+  },
+  ajustesText: { flex: 1, fontSize: 15, fontWeight: '600', color: '#2C2C2A' },
+  vozModoBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    backgroundColor: '#185FA5',
+    borderRadius: 14,
+    paddingVertical: 14,
+    marginBottom: 20,
+  },
+  vozModoText: { color: '#FFFFFF', fontSize: 17, fontWeight: '700' },
   pickerIOS: { backgroundColor: '#FFFFFF', borderRadius: 16, marginTop: 12, paddingBottom: 8 },
   listoBtn: { alignSelf: 'flex-end', paddingHorizontal: 20, paddingVertical: 8 },
   listoText: { fontSize: 16, fontWeight: '600', color: '#185FA5' },
