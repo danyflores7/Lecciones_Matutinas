@@ -46,7 +46,8 @@ export function indiceDeLibro(nombre: string): number {
 
 // --- Números dichos en palabras ("ciento diecinueve", "setenta y cinco") ---
 const N_UNIDAD: Record<string, number> = {
-  cero: 0, un: 1, uno: 1, una: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5, seis: 6, siete: 7,
+  cero: 0, un: 1, uno: 1, una: 1, primero: 1, primera: 1,
+  dos: 2, tres: 3, cuatro: 4, cinco: 5, seis: 6, siete: 7,
   ocho: 8, nueve: 9, diez: 10, once: 11, doce: 12, trece: 13, catorce: 14, quince: 15,
   dieciseis: 16, diecisiete: 17, dieciocho: 18, diecinueve: 19, veinte: 20, veintiuno: 21,
   veintiun: 21, veintidos: 22, veintitres: 23, veinticuatro: 24, veinticinco: 25,

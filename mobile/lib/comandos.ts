@@ -1,4 +1,4 @@
-import { citaHablada, normalizar as sinAcentos } from './citas';
+import { citaHablada, normalizar as sinAcentos, palabrasANumeros } from './citas';
 import { MESES, fechaHoyISO, fechaRelativaISO } from './fechas';
 
 // Intérprete de comandos por VOZ, 100% por reglas (sin IA). El dominio es fijo
@@ -46,6 +46,8 @@ const DIAS_SEMANA = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viern
 
 // 'YYYY-MM-DD' desde una frase con fecha, o null.
 function fechaDeTexto(texto: string): string | null {
+  // Convierte números en palabras ("primero", "treinta y uno") a dígitos.
+  texto = palabrasANumeros(texto);
   if (/\bhoy\b/.test(texto)) return fechaHoyISO();
   if (/\bmanana\b/.test(texto)) return fechaRelativaISO(1);
   if (/\bayer\b/.test(texto)) return fechaRelativaISO(-1);

@@ -157,12 +157,14 @@ export function pausar(): void {
   }
 }
 
-export function continuar(): void {
-  if (!estado) return;
+// Devuelve false si no había lectura pausada que continuar.
+export function continuar(): boolean {
+  if (!estado) return false;
   token += 1;
   Speech.stop();
   liberarPlayer();
   decir(token);
+  return true;
 }
 
 export function detenerVoz(): void {

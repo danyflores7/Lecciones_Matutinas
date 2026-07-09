@@ -39,7 +39,7 @@ export default function TabsLayout() {
 
       {/* Botón flotante del Modo por voz: accesible desde cualquier pestaña. */}
       <Pressable
-        onPress={() => router.push('/asistente')}
+        onPress={() => router.navigate('/asistente')}
         accessibilityRole="button"
         accessibilityLabel="Abrir el modo por voz"
         accessibilityHint="Habla para navegar y escuchar el contenido"

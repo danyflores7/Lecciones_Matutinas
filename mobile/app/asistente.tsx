@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import {
   ExpoSpeechRecognitionModule,
@@ -42,6 +42,19 @@ const AYUDA =
   'Puedes decir: matutina de hoy. Lección 3. Busca el versículo que dice, de tal manera amó Dios al mundo. ' +
   'Dónde se cita Juan 3 16. Versículos relacionados. Preguntas similares. Siguiente. Anterior. Pausar.';
 
+const BIENVENIDA = 'Te escucho. Di lo que quieres escuchar, o di ayuda.';
+
+// Silencios más largos al dictar: sin esto, una pausa corta corta el dictado.
+const OPCIONES_ESCUCHA = {
+  lang: 'es-MX',
+  interimResults: true,
+  continuous: false,
+  androidIntentOptions: {
+    EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS: 2500,
+    EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS: 2500,
+  },
+} as const;
+
 export default function Asistente() {
   const router = useRouter();
   const [escuchando, setEscuchando] = useState(false);
@@ -58,15 +71,39 @@ export default function Asistente() {
   // para que nunca pise al comando nuevo ni hable tras salir de la pantalla.
   const gen = useRef(0);
   const pausado = useRef(false);
+  const sinVoz = useRef(0); // intentos seguidos sin escuchar nada
+  const enfocado = useRef(true); // el manos-libres SOLO vive con la pantalla enfocada
+  const permisoOk = useRef(false);
+  const primerFoco = useRef(true);
   const nuevoComando = () => {
     gen.current += 1;
     return gen.current;
   };
   const vigente = (g: number) => g === gen.current;
 
+  // Vuelve a abrir el micrófono (modo conversación manos libres).
+  const escucharAuto = () => {
+    if (!enfocado.current) return; // nunca escuchar tapado por otra pantalla
+    setTexto('');
+    setEstado('Escuchando…');
+    try {
+      ExpoSpeechRecognitionModule.start(OPCIONES_ESCUCHA);
+    } catch {
+      setEstado('No pude iniciar el micrófono.');
+    }
+  };
+
   useEffect(() => {
     (async () => {
       velocidad.current = await getVelocidad();
+      // Manos libres desde que se abre la pantalla: saluda y queda escuchando.
+      const permiso = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+      if (permiso.granted) {
+        permisoOk.current = true;
+        hablar(BIENVENIDA);
+      } else {
+        setEstado('Necesito permiso para usar el micrófono. Actívalo en los ajustes del teléfono.');
+      }
     })();
     return () => {
       gen.current += 1; // invalida handlers pendientes
@@ -75,53 +112,97 @@ export default function Asistente() {
     };
   }, []);
 
+  // Al perder el foco (navegar a otra pantalla): cerrar micrófono e invalidar
+  // comandos pendientes. Al recuperarlo, volver a escuchar.
+  useFocusEffect(
+    useCallback(() => {
+      enfocado.current = true;
+      if (primerFoco.current) {
+        primerFoco.current = false; // el saludo del montaje ya abre el mic
+      } else if (permisoOk.current) {
+        sinVoz.current = 0;
+        escucharAuto();
+      }
+      return () => {
+        enfocado.current = false;
+        gen.current += 1;
+        ExpoSpeechRecognitionModule.stop();
+      };
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
+  );
+
   useSpeechRecognitionEvent('start', () => setEscuchando(true));
   useSpeechRecognitionEvent('end', () => setEscuchando(false));
   useSpeechRecognitionEvent('error', (e) => {
     setEscuchando(false);
+    if (!enfocado.current) return;
+    if (e.error === 'no-speech' || e.error === 'speech-timeout') {
+      // Silencio: reintenta un par de veces y luego descansa.
+      sinVoz.current += 1;
+      if (sinVoz.current <= 2) {
+        escucharAuto();
+      } else {
+        setEstado('Toca el micrófono cuando quieras hablar.');
+      }
+      return;
+    }
     setEstado(`No pude escuchar (${e.error ?? 'error'}). Intenta de nuevo.`);
   });
   useSpeechRecognitionEvent('result', (e) => {
+    if (!enfocado.current) return; // otra pantalla (u otra instancia) al frente
     const t = e.results?.[0]?.transcript ?? '';
     if (t) setTexto(t);
-    if (e.isFinal && t) manejar(t);
+    if (e.isFinal && t) {
+      sinVoz.current = 0;
+      manejar(t);
+    }
   });
+
+  // Al terminar de hablar la app, reabre el micrófono si no llegó otro comando.
+  const reArmar = (g: number) => {
+    if (!vigente(g) || pausado.current || !enfocado.current) return;
+    escucharAuto();
+  };
 
   const hablar = (frase: string) => {
     pausado.current = false;
-    reproducirPartes([frase], { rate: velocidad.current });
+    const g = gen.current;
+    reproducirPartes([frase], { rate: velocidad.current, onFin: () => reArmar(g) });
   };
   const reproducir = (partes: string[]) => {
     pausado.current = false;
-    reproducirPartes(partes, { rate: velocidad.current });
+    const g = gen.current;
+    reproducirPartes(partes, { rate: velocidad.current, onFin: () => reArmar(g) });
   };
 
   const escuchar = async () => {
     nuevoComando(); // invalida cualquier handler pendiente
-    detenerVoz();
+    // Si hay lectura en PAUSA, se conserva (para poder decir "leer" y seguir);
+    // si algo está sonando, se detiene para escuchar al usuario.
+    if (!pausado.current) detenerVoz();
+    sinVoz.current = 0;
     const permiso = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
     if (!permiso.granted) {
       setEstado('Necesito permiso para usar el micrófono. Actívalo en los ajustes del teléfono.');
       return;
     }
-    setTexto('');
-    setEstado('Escuchando…');
-    try {
-      ExpoSpeechRecognitionModule.start({ lang: 'es-MX', interimResults: true, continuous: false });
-    } catch {
-      setEstado('No pude iniciar el micrófono.');
-    }
+    permisoOk.current = true;
+    escucharAuto();
   };
 
-  // Presenta una lista de resultados: los muestra, lee el resumen y el primero.
-  const presentar = (r: Resultados, resumen: string) => {
+  // Presenta una lista de resultados: los muestra en pantalla y los lee TODOS
+  // en secuencia (el usuario puede tocar uno o decir "siguiente"/"anterior").
+  // resumenVoz permite decir la cita en forma hablada ("capítulo 3, versículo
+  // 16") aunque en pantalla se vea "3:16".
+  const presentar = (r: Resultados, resumen: string, resumenVoz?: string) => {
     setResultados(r);
     idxResultado.current = 0;
     setEstado(resumen);
     if (r.items.length) {
-      reproducir([resumen, ...r.items[0].partes]);
+      reproducir([resumenVoz ?? resumen, ...r.items.flatMap((it) => it.partes)]);
     } else {
-      hablar(resumen);
+      hablar(resumenVoz ?? resumen);
     }
   };
 
@@ -129,6 +210,9 @@ export default function Asistente() {
     const r = resultados;
     if (!r || !r.items[i]) return;
     nuevoComando();
+    // Cierra el micrófono si estaba abierto: si no, oiría la propia lectura.
+    ExpoSpeechRecognitionModule.stop();
+    sinVoz.current = 0;
     idxResultado.current = i;
     setEstado(`${i + 1} de ${r.items.length}: ${r.items[i].etiqueta}`);
     reproducir(r.items[i].partes);
@@ -304,7 +388,7 @@ export default function Asistente() {
       presentar(
         { titulo: `Resultados en las lecciones para “${textoBusqueda}”`, items },
         items.length
-          ? `Encontré ${items.length} en las lecciones. Primero:`
+          ? `Encontré ${items.length} en las lecciones:`
           : 'No encontré ese texto en las lecciones.'
       );
       if (items.length) ultimaCita.current = items[0].etiqueta;
@@ -320,7 +404,7 @@ export default function Asistente() {
     presentar(
       { titulo: `Resultados en la Biblia para “${textoBusqueda}”`, items },
       items.length
-        ? `Encontré ${items.length} versículos. Primero:`
+        ? `Encontré ${items.length} ${items.length === 1 ? 'versículo' : 'versículos'}:`
         : 'No encontré ese texto en la Biblia. Intenta con otras palabras.'
     );
     if (items.length) ultimaCita.current = items[0].etiqueta;
@@ -356,11 +440,15 @@ export default function Asistente() {
               partes: [`Matutina del ${fechaDiaMes(l.fecha)}, del tema ${l.tema}.`],
             }
     );
+    const citaVoz = citaParaVoz(cita);
     presentar(
       { titulo: `Dónde se cita ${cita}`, items },
       items.length
-        ? `${cita} se cita en ${items.length} ${items.length === 1 ? 'lugar' : 'lugares'}. Primero:`
-        : `No encontré ${cita} citado en las lecciones ni matutinas.`
+        ? `${cita} se cita en ${items.length} ${items.length === 1 ? 'lugar' : 'lugares'}:`
+        : `No encontré ${cita} citado en las lecciones ni matutinas.`,
+      items.length
+        ? `${citaVoz} se cita en ${items.length} ${items.length === 1 ? 'lugar' : 'lugares'}.`
+        : `No encontré ${citaVoz} citado en las lecciones ni matutinas.`
     );
   };
 
@@ -378,6 +466,7 @@ export default function Asistente() {
       etiqueta: r.cita,
       partes: [`${citaParaVoz(r.cita)}.`, r.texto],
     }));
+    const citaVoz = citaParaVoz(cita);
     presentar(
       {
         titulo: `Versículos relacionados con ${cita}`,
@@ -385,8 +474,11 @@ export default function Asistente() {
         pie: 'Referencias cruzadas: openbible.info (CC-BY)',
       },
       items.length
-        ? `Hay ${items.length} versículos relacionados con ${cita}. Primero:`
-        : `No tengo versículos relacionados para ${cita}.`
+        ? `Hay ${items.length} versículos relacionados con ${cita}:`
+        : `No tengo versículos relacionados para ${cita}.`,
+      items.length
+        ? `Hay ${items.length} versículos relacionados con ${citaVoz}.`
+        : `No tengo versículos relacionados para ${citaVoz}.`
     );
   };
 
@@ -419,7 +511,7 @@ export default function Asistente() {
     presentar(
       { titulo: `Preguntas similares a la lección ${datos.leccion.numero}`, items },
       items.length
-        ? `Encontré ${items.length} preguntas similares en otras lecciones. Primera:`
+        ? `Encontré ${items.length} preguntas similares en otras lecciones:`
         : 'No encontré preguntas similares para esta lección.'
     );
   };
@@ -448,9 +540,11 @@ export default function Asistente() {
         // Tras una pausa, "leer" CONTINÚA donde iba (no reinicia).
         if (pausado.current) {
           pausado.current = false;
-          continuar();
-          setEstado('Continuando…');
-          return;
+          if (continuar()) {
+            setEstado('Continuando…');
+            return;
+          }
+          // no había nada que continuar: cae a re-leer lo último
         }
         const u = ultimo.current;
         if (resultados?.items.length) return leerResultado(idxResultado.current);
@@ -463,6 +557,10 @@ export default function Asistente() {
         pausar();
         pausado.current = true;
         setEstado('En pausa. Di "leer" para continuar.');
+        // Reabre el micrófono: con el audio en pausa no hay riesgo de oírse,
+        // y así "leer" funciona por voz sin tocar nada.
+        sinVoz.current = 0;
+        escucharAuto();
         return;
       case 'detener':
         detenerVoz();

@@ -1,13 +1,16 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
 import { getTodosLosVersiculos, type VersiculoDia } from '../../lib/supabase';
 import { diaDelMes, fechaHoyISO, mesAbrev, MESES } from '../../lib/fechas';
 import { guardarCache, leerCache } from '../../lib/cache';
 import { getVersiculosLocal } from '../../lib/contenido';
+import { detenerVoz, reproducirPartes } from '../../lib/voz';
+import { segmentosMatutina } from '../../lib/segmentos';
+import { getVelocidad } from '../../lib/almacen';
 
 type Grupo = { tema: string; dias: VersiculoDia[] };
 type Mes = { key: string; label: string; total: number; grupos: Grupo[] };
@@ -26,10 +29,41 @@ export default function Calendario() {
   const [items, setItems] = useState<VersiculoDia[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [sonando, setSonando] = useState<string | null>(null); // fecha en audio
   const hoy = fechaHoyISO();
   const mesHoy = hoy.slice(0, 7);
   // Al abrir, solo el mes actual está expandido (mínimo scroll).
   const [abiertos, setAbiertos] = useState<Set<string>>(() => new Set([mesHoy]));
+
+  const velocidad = useRef(1.0);
+  useEffect(() => {
+    getVelocidad().then((v) => {
+      velocidad.current = v;
+    });
+  }, []);
+
+  // Detiene la voz al salir de la pantalla (cambiar de pestaña o navegar).
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        detenerVoz();
+        setSonando(null);
+      };
+    }, [])
+  );
+
+  const escucharDia = (v: VersiculoDia) => {
+    if (sonando === v.fecha) {
+      detenerVoz();
+      setSonando(null);
+      return;
+    }
+    setSonando(v.fecha);
+    reproducirPartes(segmentosMatutina(v), {
+      rate: velocidad.current,
+      onFin: () => setSonando(null),
+    });
+  };
 
   useEffect(() => {
     (async () => {
@@ -145,6 +179,21 @@ export default function Calendario() {
                   {esHoy ? ' · hoy' : ''}
                 </Text>
               </View>
+              <Pressable
+                onPress={() => escucharDia(v)}
+                hitSlop={10}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  sonando === v.fecha ? `Detener ${v.cita}` : `Escuchar ${v.cita}`
+                }
+                style={styles.vozBtn}
+              >
+                <Ionicons
+                  name={sonando === v.fecha ? 'stop-circle' : 'volume-high-outline'}
+                  size={22}
+                  color="#185FA5"
+                />
+              </Pressable>
               <Ionicons name="chevron-forward" size={18} color="#B4B2A9" />
             </Pressable>
           );
@@ -202,6 +251,7 @@ const styles = StyleSheet.create({
   diaNumHoy: { color: '#FFFFFF' },
   diaMes: { fontSize: 11, color: '#0C447C', textTransform: 'uppercase' },
   filaTexto: { flex: 1 },
+  vozBtn: { paddingHorizontal: 4 },
   cita: { fontSize: 15, fontWeight: '600', color: '#2C2C2A' },
   dia: { fontSize: 13, color: '#5F5E5A', marginTop: 2, textTransform: 'capitalize' },
   error: { color: '#A32D2D', fontSize: 13, textAlign: 'center', padding: 24 },

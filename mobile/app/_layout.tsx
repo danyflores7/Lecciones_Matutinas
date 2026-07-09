@@ -14,7 +14,7 @@ export default function RootLayout() {
   // lección, memorizar y ajustes).
   const micHeader = () => (
     <Pressable
-      onPress={() => router.push('/asistente')}
+      onPress={() => router.navigate('/asistente')}
       hitSlop={10}
       accessibilityRole="button"
       accessibilityLabel="Abrir el modo por voz"

@@ -99,6 +99,7 @@ async function main() {
     'No pude cargar la lección. Conéctate a internet una vez.',
     'Los datos de búsqueda aún no se descargan. Conéctate a internet una vez y vuelve a intentar.',
     'No encontré la lección de esta semana.',
+    'Te escucho. Di lo que quieres escuchar, o di ayuda.',
     'Dime qué cita busco. Por ejemplo: dónde se cita Juan 3 16.',
     'Dime de qué versículo. Por ejemplo: versículos relacionados a Juan 3 16.',
     'Primero abre una lección, y luego te busco preguntas similares.',

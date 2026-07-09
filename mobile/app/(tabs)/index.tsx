@@ -203,7 +203,7 @@ export default function Inicio() {
           accessibilityRole="button"
           accessibilityLabel="Abrir el modo por voz para escuchar y navegar hablando"
           style={({ pressed }) => [styles.vozModoBtn, pressed && styles.btnPressed]}
-          onPress={() => router.push('/asistente')}
+          onPress={() => router.navigate('/asistente')}
         >
           <Ionicons name="mic" size={22} color="#FFFFFF" />
           <Text style={styles.vozModoText}>Modo por voz</Text>
