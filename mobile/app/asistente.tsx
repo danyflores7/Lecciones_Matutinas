@@ -44,15 +44,14 @@ const AYUDA =
 
 const BIENVENIDA = 'Te escucho. Di lo que quieres escuchar, o di ayuda.';
 
-// Silencios más largos al dictar: sin esto, una pausa corta corta el dictado.
+// OJO: sin androidIntentOptions de silencio. En los Pixel, el reconocedor de
+// Google deja de entregar el resultado final cuando se le pasan esos extras
+// (la app se quedaba en "Escuchando…" para siempre). La tolerancia a pausas
+// se maneja con la red de seguridad del evento 'end' + los reintentos.
 const OPCIONES_ESCUCHA = {
   lang: 'es-MX',
   interimResults: true,
   continuous: false,
-  androidIntentOptions: {
-    EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS: 2500,
-    EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS: 2500,
-  },
 } as const;
 
 export default function Asistente() {
@@ -75,6 +74,17 @@ export default function Asistente() {
   const enfocado = useRef(true); // el manos-libres SOLO vive con la pantalla enfocada
   const permisoOk = useRef(false);
   const primerFoco = useRef(true);
+  // Red de seguridad: si el reconocedor termina SIN resultado final (pasa en
+  // algunos teléfonos), se usa la última transcripción parcial.
+  const interimRef = useRef('');
+  const finalRecibido = useRef(true);
+
+  // Cierra el micrófono descartando lo que hubiera a medio transcribir.
+  const cerrarMic = () => {
+    finalRecibido.current = true;
+    interimRef.current = '';
+    ExpoSpeechRecognitionModule.stop();
+  };
   const nuevoComando = () => {
     gen.current += 1;
     return gen.current;
@@ -85,6 +95,8 @@ export default function Asistente() {
   const escucharAuto = () => {
     if (!enfocado.current) return; // nunca escuchar tapado por otra pantalla
     setTexto('');
+    interimRef.current = '';
+    finalRecibido.current = false;
     setEstado('Escuchando…');
     try {
       ExpoSpeechRecognitionModule.start(OPCIONES_ESCUCHA);
@@ -126,19 +138,39 @@ export default function Asistente() {
       return () => {
         enfocado.current = false;
         gen.current += 1;
-        ExpoSpeechRecognitionModule.stop();
+        cerrarMic();
       };
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
   );
 
   useSpeechRecognitionEvent('start', () => setEscuchando(true));
-  useSpeechRecognitionEvent('end', () => setEscuchando(false));
+  useSpeechRecognitionEvent('end', () => {
+    setEscuchando(false);
+    // Red de seguridad: la sesión terminó sin resultado final pero SÍ se
+    // alcanzó a transcribir algo -> se usa esa transcripción como comando.
+    if (!enfocado.current) return;
+    if (!finalRecibido.current && interimRef.current.trim()) {
+      const t = interimRef.current.trim();
+      finalRecibido.current = true;
+      interimRef.current = '';
+      sinVoz.current = 0;
+      manejar(t);
+    }
+  });
   useSpeechRecognitionEvent('error', (e) => {
     setEscuchando(false);
     if (!enfocado.current) return;
     if (e.error === 'no-speech' || e.error === 'speech-timeout') {
-      // Silencio: reintenta un par de veces y luego descansa.
+      // Si alcanzó a oír algo, úsalo; si no, reintenta un par de veces.
+      if (interimRef.current.trim()) {
+        const t = interimRef.current.trim();
+        finalRecibido.current = true;
+        interimRef.current = '';
+        sinVoz.current = 0;
+        manejar(t);
+        return;
+      }
       sinVoz.current += 1;
       if (sinVoz.current <= 2) {
         escucharAuto();
@@ -152,8 +184,13 @@ export default function Asistente() {
   useSpeechRecognitionEvent('result', (e) => {
     if (!enfocado.current) return; // otra pantalla (u otra instancia) al frente
     const t = e.results?.[0]?.transcript ?? '';
-    if (t) setTexto(t);
+    if (t) {
+      setTexto(t);
+      interimRef.current = t;
+    }
     if (e.isFinal && t) {
+      finalRecibido.current = true;
+      interimRef.current = '';
       sinVoz.current = 0;
       manejar(t);
     }
@@ -211,7 +248,7 @@ export default function Asistente() {
     if (!r || !r.items[i]) return;
     nuevoComando();
     // Cierra el micrófono si estaba abierto: si no, oiría la propia lectura.
-    ExpoSpeechRecognitionModule.stop();
+    cerrarMic();
     sinVoz.current = 0;
     idxResultado.current = i;
     setEstado(`${i + 1} de ${r.items.length}: ${r.items[i].etiqueta}`);
