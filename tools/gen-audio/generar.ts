@@ -46,8 +46,8 @@ function sha1(texto: string): string {
 async function main() {
   console.log('Descargando contenido…');
   const [versiculos, lecciones, preguntas, citasRows] = await Promise.all([
-    tabla('versiculos_dia?select=cita,texto&limit=2000'),
-    tabla('lecciones?select=id,fecha,titulo,versiculo_central_cita,versiculo_central_texto,introduccion&limit=2000'),
+    tabla('versiculos_dia?select=fecha,cita,texto&limit=2000'),
+    tabla('lecciones?select=id,numero,fecha,titulo,versiculo_central_cita,versiculo_central_texto,introduccion&limit=2000'),
     tabla('lecciones_preguntas?select=leccion_id,orden,pregunta,citas,nota&limit=2000'),
     tabla('citas_texto?select=cita,texto&limit=2000'),
   ]);
@@ -69,6 +69,40 @@ async function main() {
       .sort((a, b) => a.orden - b.orden);
     add(segmentosLeccion(l as any, ps as any, citas));
   }
+
+  // Frases del Modo por voz (deben coincidir EXACTO con las de la app para que
+  // el hash calce): anuncios de matutina/lección y avisos fijos del asistente.
+  const MESES = [
+    'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+    'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
+  ];
+  for (const v of versiculos) {
+    const f = (v as any).fecha as string; // 'YYYY-MM-DD'
+    const dia = Number(f.slice(8, 10));
+    const mes = MESES[Number(f.slice(5, 7)) - 1];
+    add([`Matutina del ${dia} de ${mes}.`]);
+  }
+  for (const l of lecciones) {
+    add([`Lección ${(l as any).numero}. ${(l as any).titulo}.`]);
+  }
+  add([
+    'Puedes decir: matutina de hoy. Lección 3. Busca el versículo que dice, de tal manera amó Dios al mundo. ' +
+      'Dónde se cita Juan 3 16. Versículos relacionados. Preguntas similares. Siguiente. Anterior. Pausar.',
+    'No te entendí. Di ayuda para escuchar los comandos.',
+    'Primero pide una matutina o una lección.',
+    'Abriendo Inicio.',
+    'Abriendo Calendario.',
+    'Abriendo Estudio.',
+    'No hay más resultados.',
+    'Es el primer resultado.',
+    'Es la primera lección.',
+    'No pude cargar la lección. Conéctate a internet una vez.',
+    'Los datos de búsqueda aún no se descargan. Conéctate a internet una vez y vuelve a intentar.',
+    'No encontré la lección de esta semana.',
+    'Dime qué cita busco. Por ejemplo: dónde se cita Juan 3 16.',
+    'Dime de qué versículo. Por ejemplo: versículos relacionados a Juan 3 16.',
+    'Primero abre una lección, y luego te busco preguntas similares.',
+  ]);
 
   const items = [...textos].map((texto) => ({ texto, hash: sha1(texto) }));
   mkdirSync(OUTDIR, { recursive: true });

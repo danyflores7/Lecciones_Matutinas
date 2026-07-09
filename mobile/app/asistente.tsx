@@ -17,6 +17,12 @@ import {
   getVersiculoLocal,
 } from '../lib/contenido';
 import {
+  getLeccion,
+  getLecciones,
+  getVersiculoPorFecha,
+  type Leccion,
+} from '../lib/supabase';
+import {
   bibliaDisponible,
   buscarEnBiblia,
   obtenerVersiculo,
@@ -24,7 +30,7 @@ import {
   versiculosRelacionados,
 } from '../lib/biblia';
 import { citaParaVoz, segmentosLeccion, segmentosMatutina } from '../lib/segmentos';
-import { detenerVoz, pausar, reproducirPartes } from '../lib/voz';
+import { continuar, detenerVoz, pausar, reproducirPartes } from '../lib/voz';
 import { getVelocidad } from '../lib/almacen';
 import { fechaDiaMes, fechaHoyISO, sumarDias } from '../lib/fechas';
 
@@ -47,12 +53,23 @@ export default function Asistente() {
   const ultimaCita = useRef<string | null>(null);
   const ultimaLeccionFecha = useRef<string | null>(null);
   const idxResultado = useRef(0);
+  // Generación de comandos: cada comando nuevo la incrementa. Un handler
+  // asíncrono viejo (p. ej. esperando red) se descarta si ya no es el vigente,
+  // para que nunca pise al comando nuevo ni hable tras salir de la pantalla.
+  const gen = useRef(0);
+  const pausado = useRef(false);
+  const nuevoComando = () => {
+    gen.current += 1;
+    return gen.current;
+  };
+  const vigente = (g: number) => g === gen.current;
 
   useEffect(() => {
     (async () => {
       velocidad.current = await getVelocidad();
     })();
     return () => {
+      gen.current += 1; // invalida handlers pendientes
       detenerVoz();
       ExpoSpeechRecognitionModule.stop();
     };
@@ -70,10 +87,17 @@ export default function Asistente() {
     if (e.isFinal && t) manejar(t);
   });
 
-  const hablar = (frase: string) => reproducirPartes([frase], { rate: velocidad.current });
-  const reproducir = (partes: string[]) => reproducirPartes(partes, { rate: velocidad.current });
+  const hablar = (frase: string) => {
+    pausado.current = false;
+    reproducirPartes([frase], { rate: velocidad.current });
+  };
+  const reproducir = (partes: string[]) => {
+    pausado.current = false;
+    reproducirPartes(partes, { rate: velocidad.current });
+  };
 
   const escuchar = async () => {
+    nuevoComando(); // invalida cualquier handler pendiente
     detenerVoz();
     const permiso = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
     if (!permiso.granted) {
@@ -104,13 +128,23 @@ export default function Asistente() {
   const leerResultado = (i: number) => {
     const r = resultados;
     if (!r || !r.items[i]) return;
+    nuevoComando();
     idxResultado.current = i;
     setEstado(`${i + 1} de ${r.items.length}: ${r.items[i].etiqueta}`);
     reproducir(r.items[i].partes);
   };
 
-  const leerMatutina = async (fecha: string) => {
-    const v = await getVersiculoLocal(fecha);
+  const leerMatutina = async (fecha: string, g: number) => {
+    // Local primero; si el paquete aún no se descarga, intenta por internet.
+    let v = await getVersiculoLocal(fecha);
+    if (!v) {
+      try {
+        v = await getVersiculoPorFecha(fecha);
+      } catch {
+        v = null;
+      }
+    }
+    if (!vigente(g)) return; // llegó un comando más nuevo
     if (!v) {
       setEstado(`No encontré la matutina del ${fechaDiaMes(fecha)}.`);
       hablar(`No encontré la matutina del ${fechaDiaMes(fecha)}.`);
@@ -123,8 +157,61 @@ export default function Asistente() {
     reproducir([`Matutina del ${fechaDiaMes(fecha)}.`, ...segmentosMatutina(v)]);
   };
 
-  const leerLeccion = async (numero: number) => {
-    const lecciones = await getLeccionesLocal();
+  // Lista de lecciones: local primero, red como respaldo.
+  const listaLecciones = async (): Promise<Leccion[]> => {
+    const local = await getLeccionesLocal();
+    if (local.length) return local;
+    try {
+      return await getLecciones();
+    } catch {
+      return [];
+    }
+  };
+
+  const leerLeccionDeFecha = async (lec: Leccion, g: number) => {
+    let datos = await getLeccionLocal(lec.fecha);
+    if (!datos) {
+      try {
+        datos = await getLeccion(lec.fecha);
+      } catch {
+        datos = null;
+      }
+    }
+    if (!vigente(g)) return;
+    if (!datos) {
+      setEstado('No pude cargar la lección. Conéctate a internet una vez.');
+      hablar('No pude cargar la lección. Conéctate a internet una vez.');
+      return;
+    }
+    ultimo.current = { tipo: 'leccion', numero: lec.numero };
+    ultimaLeccionFecha.current = lec.fecha;
+    ultimaCita.current = lec.versiculo_central_cita;
+    setResultados(null);
+    setEstado(`Leyendo la lección ${lec.numero}: ${lec.titulo}.`);
+    reproducir([
+      `Lección ${lec.numero}. ${lec.titulo}.`,
+      ...segmentosLeccion(datos.leccion, datos.preguntas, datos.citasTexto),
+    ]);
+  };
+
+  // "La lección de hoy / de esta semana": la vigente (la última que ya empezó).
+  const leerLeccionActual = async (g: number) => {
+    const lecciones = await listaLecciones();
+    if (!vigente(g)) return;
+    const hoy = fechaHoyISO();
+    const pasadas = lecciones.filter((l) => l.fecha <= hoy);
+    const lec = pasadas.length ? pasadas[pasadas.length - 1] : lecciones[0];
+    if (!lec) {
+      setEstado('No encontré la lección de esta semana.');
+      hablar('No encontré la lección de esta semana.');
+      return;
+    }
+    return leerLeccionDeFecha(lec, g);
+  };
+
+  const leerLeccion = async (numero: number, g: number) => {
+    const lecciones = await listaLecciones();
+    if (!vigente(g)) return;
     const cands = lecciones
       .filter((l) => l.numero === numero)
       .sort((a, b) => (a.fecha < b.fecha ? 1 : -1));
@@ -135,7 +222,8 @@ export default function Asistente() {
       return;
     }
     const datos = await getLeccionLocal(lec.fecha);
-    if (!datos) return;
+    if (!vigente(g)) return;
+    if (!datos) return leerLeccionDeFecha(lec, g);
     ultimo.current = { tipo: 'leccion', numero };
     ultimaLeccionFecha.current = lec.fecha;
     ultimaCita.current = lec.versiculo_central_cita;
@@ -147,7 +235,7 @@ export default function Asistente() {
     ]);
   };
 
-  const relativo = (dir: 1 | -1) => {
+  const relativo = (dir: 1 | -1, g: number) => {
     // Con resultados en pantalla, "siguiente/anterior" navega la lista.
     if (resultados?.items.length) {
       const i = idxResultado.current + dir;
@@ -164,8 +252,8 @@ export default function Asistente() {
       hablar('Primero pide una matutina o una lección.');
       return;
     }
-    if (u.tipo === 'matutina') leerMatutina(sumarDias(u.fecha, dir));
-    else if (u.numero + dir >= 1) leerLeccion(u.numero + dir);
+    if (u.tipo === 'matutina') leerMatutina(sumarDias(u.fecha, dir), g);
+    else if (u.numero + dir >= 1) leerLeccion(u.numero + dir, g);
     else hablar('Es la primera lección.');
   };
 
@@ -180,15 +268,21 @@ export default function Asistente() {
     return false;
   };
 
-  const hBuscarVersiculo = async (textoBusqueda: string, ambito: 'biblia' | 'lecciones') => {
+  const hBuscarVersiculo = async (
+    textoBusqueda: string,
+    ambito: 'biblia' | 'lecciones',
+    g: number
+  ) => {
     // ¿Dijo una cita concreta? ("Juan 3 16") -> lookup directo.
     const cita = citaHablada(normalizar(textoBusqueda));
     if (cita && cita.includes(':')) {
       if (!(await avisoDatos())) return;
       const v = await obtenerVersiculo(cita);
+      if (!vigente(g)) return;
       if (v) {
         ultimaCita.current = v.cita;
         const lugares = await dondeSeCita(v.cita);
+        if (!vigente(g)) return;
         const extra = lugares.length
           ? ` También se cita en ${lugares.length} ${lugares.length === 1 ? 'lugar' : 'lugares'} de la app; di "dónde se cita" para escucharlos.`
           : '';
@@ -202,6 +296,7 @@ export default function Asistente() {
     setEstado('Buscando…');
     if (ambito === 'lecciones') {
       const res = await buscarTextoLocal(textoBusqueda);
+      if (!vigente(g)) return;
       const items = res.map((r) => ({
         etiqueta: r.etiqueta,
         partes: [`${citaParaVoz(r.etiqueta)}.`, r.texto],
@@ -217,6 +312,7 @@ export default function Asistente() {
     }
     if (!(await avisoDatos())) return;
     const res = await buscarEnBiblia(textoBusqueda);
+    if (!vigente(g)) return;
     const items = res.map((r) => ({
       etiqueta: r.cita,
       partes: [`${citaParaVoz(r.cita)}.`, r.texto],
@@ -230,7 +326,7 @@ export default function Asistente() {
     if (items.length) ultimaCita.current = items[0].etiqueta;
   };
 
-  const hDondeSeCita = async (citaPedida: string | null) => {
+  const hDondeSeCita = async (citaPedida: string | null, g: number) => {
     const cita = citaPedida ?? ultimaCita.current;
     if (!cita) {
       hablar('Dime qué cita busco. Por ejemplo: dónde se cita Juan 3 16.');
@@ -238,6 +334,7 @@ export default function Asistente() {
       return;
     }
     const lugares = await dondeSeCita(cita);
+    if (!vigente(g)) return;
     const items: ItemResultado[] = lugares.map((l) =>
       l.tipo === 'pregunta'
         ? {
@@ -267,7 +364,7 @@ export default function Asistente() {
     );
   };
 
-  const hVersiculosRelacionados = async (citaPedida: string | null) => {
+  const hVersiculosRelacionados = async (citaPedida: string | null, g: number) => {
     const cita = citaPedida ?? ultimaCita.current;
     if (!cita) {
       hablar('Dime de qué versículo. Por ejemplo: versículos relacionados a Juan 3 16.');
@@ -276,6 +373,7 @@ export default function Asistente() {
     }
     if (!(await avisoDatos())) return;
     const rel = await versiculosRelacionados(cita);
+    if (!vigente(g)) return;
     const items = rel.map((r) => ({
       etiqueta: r.cita,
       partes: [`${citaParaVoz(r.cita)}.`, r.texto],
@@ -292,7 +390,7 @@ export default function Asistente() {
     );
   };
 
-  const hPreguntasSimilares = async () => {
+  const hPreguntasSimilares = async (g: number) => {
     // Lección base: la última pedida por voz, o la vigente (la más reciente).
     let fecha = ultimaLeccionFecha.current;
     if (!fecha) {
@@ -301,6 +399,7 @@ export default function Asistente() {
       fecha = lecciones.length ? lecciones[lecciones.length - 1].fecha : null;
     }
     const datos = fecha ? await getLeccionLocal(fecha) : null;
+    if (!vigente(g)) return;
     if (!datos) {
       hablar('Primero abre una lección, y luego te busco preguntas similares.');
       setEstado('Primero abre una lección (di, por ejemplo, “lección 3”).');
@@ -311,6 +410,7 @@ export default function Asistente() {
       datos.preguntas.map((p) => p.id),
       datos.leccion.numero
     );
+    if (!vigente(g)) return;
     const items = sims.map((s) => ({
       etiqueta: `Lección ${s.leccion_numero}, pregunta ${s.orden}`,
       sub: s.leccion_titulo,
@@ -324,38 +424,49 @@ export default function Asistente() {
     );
   };
 
-  const ejecutar = (c: Comando) => {
+  const ejecutar = (c: Comando, g: number) => {
     switch (c.tipo) {
       case 'abrirMatutina':
-        return leerMatutina(c.fecha);
+        return leerMatutina(c.fecha, g);
       case 'abrirLeccion':
-        return leerLeccion(c.numero);
+        return leerLeccion(c.numero, g);
+      case 'abrirLeccionActual':
+        return leerLeccionActual(g);
       case 'buscarVersiculo':
-        return hBuscarVersiculo(c.texto, c.ambito);
+        return hBuscarVersiculo(c.texto, c.ambito, g);
       case 'dondeSeCita':
-        return hDondeSeCita(c.cita);
+        return hDondeSeCita(c.cita, g);
       case 'versiculosRelacionados':
-        return hVersiculosRelacionados(c.cita);
+        return hVersiculosRelacionados(c.cita, g);
       case 'preguntasSimilares':
-        return hPreguntasSimilares();
+        return hPreguntasSimilares(g);
       case 'siguiente':
-        return relativo(1);
+        return relativo(1, g);
       case 'anterior':
-        return relativo(-1);
+        return relativo(-1, g);
       case 'leer': {
+        // Tras una pausa, "leer" CONTINÚA donde iba (no reinicia).
+        if (pausado.current) {
+          pausado.current = false;
+          continuar();
+          setEstado('Continuando…');
+          return;
+        }
         const u = ultimo.current;
         if (resultados?.items.length) return leerResultado(idxResultado.current);
-        if (u?.tipo === 'matutina') return leerMatutina(u.fecha);
-        if (u?.tipo === 'leccion') return leerLeccion(u.numero);
+        if (u?.tipo === 'matutina') return leerMatutina(u.fecha, g);
+        if (u?.tipo === 'leccion') return leerLeccion(u.numero, g);
         setEstado('Primero pide una matutina o una lección.');
         return;
       }
       case 'pausar':
         pausar();
+        pausado.current = true;
         setEstado('En pausa. Di "leer" para continuar.');
         return;
       case 'detener':
         detenerVoz();
+        pausado.current = false;
         setEstado('Detenido.');
         return;
       case 'ir': {
@@ -376,7 +487,7 @@ export default function Asistente() {
     }
   };
 
-  const manejar = (transcript: string) => ejecutar(interpretar(transcript));
+  const manejar = (transcript: string) => ejecutar(interpretar(transcript), nuevoComando());
 
   return (
     <ScrollView
@@ -438,7 +549,7 @@ export default function Asistente() {
       ) : null}
 
       <Pressable
-        onPress={() => ejecutar({ tipo: 'detener' })}
+        onPress={() => ejecutar({ tipo: 'detener' }, nuevoComando())}
         accessibilityRole="button"
         accessibilityLabel="Detener la lectura"
         style={({ pressed }) => [styles.btnDetener, pressed && styles.pressed]}

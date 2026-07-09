@@ -42,15 +42,85 @@ export async function rutaLocalAudioParaTexto(texto: string): Promise<string | n
   return f.exists ? f.uri : null;
 }
 
+// Escrituras del índice serializadas en una cola (evita que descargas
+// concurrentes se pisen las entradas entre sí).
+let colaIndice: Promise<void> = Promise.resolve();
+function encolarIndice(
+  fn: (
+    ind: Record<string, string>
+  ) => Promise<Record<string, string> | null> | Record<string, string> | null
+): Promise<void> {
+  colaIndice = colaIndice
+    .then(async () => {
+      const ind = (await leerCache<Record<string, string>>(INDICE)) ?? {};
+      const nuevo = await fn(ind);
+      if (nuevo) await guardarCache(INDICE, nuevo);
+    })
+    .catch(() => {});
+  return colaIndice;
+}
+
+// Descarga ATÓMICA: baja a un .part y solo al terminar lo renombra al nombre
+// final. Así "el mp3 existe" siempre significa "el mp3 está completo" (un
+// corte de red a media descarga no deja un archivo truncado que se sirva).
 async function descargarHash(hash: string): Promise<boolean> {
   const f = archivo(hash);
   if (f.exists) return true;
+  const part = new File(carpeta(), `${hash}.part`);
   try {
-    await File.downloadFileAsync(`${BASE}/${hash}.mp3`, f);
+    if (part.exists) part.delete();
+    await File.downloadFileAsync(`${BASE}/${hash}.mp3`, part);
+    part.move(f);
     return f.exists;
   } catch {
+    try {
+      if (part.exists) part.delete();
+    } catch {
+      // ignorar
+    }
     return false;
   }
+}
+
+// Descargas en curso por hash (para no pedir dos veces el mismo clip) y caché
+// negativa de la sesión (clips que el CDN no tiene: frases dinámicas).
+const enCurso = new Map<string, Promise<boolean>>();
+const fallidos = new Set<string>();
+
+function descargaUnica(hash: string): Promise<boolean> {
+  let p = enCurso.get(hash);
+  if (!p) {
+    p = descargarHash(hash)
+      .then((ok) => {
+        if (ok) encolarIndice((ind) => ({ ...ind, [hash]: fechaHoyISO() }));
+        else fallidos.add(hash);
+        return ok;
+      })
+      .finally(() => enCurso.delete(hash));
+    enCurso.set(hash, p);
+  }
+  return p;
+}
+
+// Audio "al momento": si el clip no está descargado, lo baja ya (con tiempo
+// límite para no trabar la lectura). Devuelve la ruta local o null (sin red /
+// no existe / tardó demasiado). Lo descargado queda guardado e indexado para
+// que la limpieza de 14 días también lo gobierne.
+export async function asegurarAudio(texto: string, timeoutMs = 3500): Promise<string | null> {
+  const t = texto.trim();
+  if (!t) return null;
+  const hash = await hashHablado(t);
+  const f = archivo(hash);
+  if (f.exists) return f.uri;
+  if (fallidos.has(hash)) return null; // ya sabemos que no está en el CDN
+
+  const bajada = descargaUnica(hash);
+  const aTiempo = await Promise.race([
+    bajada,
+    new Promise<false>((res) => setTimeout(() => res(false), timeoutMs)),
+  ]);
+  if (!aTiempo) return null; // la descarga puede seguir; servirá la próxima vez
+  return f.exists ? f.uri : null;
 }
 
 async function agregarHashes(textos: string[], acc: Set<string>): Promise<void> {
@@ -81,38 +151,36 @@ async function hashesDeLaSemana(): Promise<Set<string>> {
   return out;
 }
 
-// Descarga (si faltan) los audios de la semana y marca su fecha para expirar.
+// Descarga (si faltan) los audios de la semana; descargaUnica los deja
+// indexados con fecha de hoy (para la expiración).
 export async function descargarSemana(): Promise<void> {
   const hashes = await hashesDeLaSemana();
-  if (!hashes.size) return;
-  const indice = (await leerCache<Record<string, string>>(INDICE)) ?? {};
-  const hoy = fechaHoyISO();
   for (const h of hashes) {
-    if (await descargarHash(h)) indice[h] = hoy;
+    await descargaUnica(h);
   }
-  await guardarCache(INDICE, indice);
 }
 
 // Borra los audios cuya última descarga sea de hace más de 14 días (a menos
 // que el usuario haya activado "descargar todo").
 export async function limpiarViejo(): Promise<void> {
   if ((await leerCache<string>(MODO_COMPLETO)) === '1') return;
-  const indice = (await leerCache<Record<string, string>>(INDICE)) ?? {};
   const corte = fechaRelativaISO(-14);
-  let cambio = false;
-  for (const [hash, fecha] of Object.entries(indice)) {
-    if (fecha < corte) {
-      try {
-        const f = archivo(hash);
-        if (f.exists) f.delete();
-      } catch {
-        // ignorar
+  await encolarIndice((indice) => {
+    let cambio = false;
+    for (const [hash, fecha] of Object.entries(indice)) {
+      if (fecha < corte) {
+        try {
+          const f = archivo(hash);
+          if (f.exists) f.delete();
+        } catch {
+          // ignorar
+        }
+        delete indice[hash];
+        cambio = true;
       }
-      delete indice[hash];
-      cambio = true;
     }
-  }
-  if (cambio) await guardarCache(INDICE, indice);
+    return cambio ? indice : null;
+  });
 }
 
 // --- Estado observable de la descarga "todo" (sobrevive a la navegación) ---
@@ -165,14 +233,11 @@ export async function descargarTodo(): Promise<void> {
     const hashes = await hashesDeTodo();
     estadoDescarga.total = hashes.size;
     emitir();
-    const indice = (await leerCache<Record<string, string>>(INDICE)) ?? {};
-    const hoy = fechaHoyISO();
     for (const h of hashes) {
-      if (await descargarHash(h)) indice[h] = hoy;
+      await descargaUnica(h);
       estadoDescarga.hecho += 1;
       emitir();
     }
-    await guardarCache(INDICE, indice);
     await guardarCache(MODO_COMPLETO, '1');
     estadoDescarga.completo = true;
   } finally {
@@ -203,6 +268,7 @@ export async function borrarAudios(): Promise<void> {
   }
   await guardarCache(INDICE, {});
   await guardarCache(MODO_COMPLETO, '0');
+  fallidos.clear();
   estadoDescarga = { activa: false, hecho: 0, total: 0, completo: false };
   emitir();
 }

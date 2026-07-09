@@ -1,7 +1,7 @@
 import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from 'expo-audio';
 import * as Speech from 'expo-speech';
 
-import { rutaLocalAudioParaTexto } from './audio';
+import { asegurarAudio } from './audio';
 
 // citaParaVoz se movió a ./segmentos (compartido con el generador de audio).
 // Se re-exporta aquí para no romper las importaciones existentes.
@@ -63,9 +63,11 @@ async function decir(mi: number) {
   }
   const texto = estado.partes[estado.idx];
 
+  // Voz neural: usa el mp3 local o lo descarga AL MOMENTO si hay internet
+  // (clips de ~35 KB). Solo si no se puede, cae a la voz del sistema.
   let uri: string | null = null;
   try {
-    uri = await rutaLocalAudioParaTexto(texto);
+    uri = await asegurarAudio(texto);
   } catch {
     uri = null;
   }
@@ -98,6 +100,27 @@ async function decir(mi: number) {
       }
     });
     p.play();
+    // Vigilante: si en 5s el clip no arrancó (archivo dañado / carga fallida),
+    // se cae a la voz del sistema para que la lectura nunca se quede muda.
+    setTimeout(() => {
+      if (mi !== token || avanzado || !estado) return;
+      let arranco = false;
+      try {
+        arranco = p.playing || p.currentTime > 0;
+      } catch {
+        arranco = false;
+      }
+      if (!arranco) {
+        avanzado = true;
+        try {
+          sub.remove();
+        } catch {
+          // ignorar
+        }
+        liberarPlayer();
+        hablarTTS(mi, texto);
+      }
+    }, 5000);
   } catch {
     liberarPlayer();
     hablarTTS(mi, texto);

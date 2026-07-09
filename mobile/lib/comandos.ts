@@ -8,6 +8,7 @@ import { MESES, fechaHoyISO, fechaRelativaISO } from './fechas';
 
 export type Comando =
   | { tipo: 'abrirLeccion'; numero: number }
+  | { tipo: 'abrirLeccionActual' } // "la lección de hoy / de esta semana"
   | { tipo: 'abrirMatutina'; fecha: string } // 'YYYY-MM-DD'
   | { tipo: 'buscarVersiculo'; texto: string; ambito: 'biblia' | 'lecciones' }
   | { tipo: 'dondeSeCita'; cita: string | null } // null = la última cita leída
@@ -41,6 +42,8 @@ function primerNumero(texto: string): number | null {
   return null;
 }
 
+const DIAS_SEMANA = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
+
 // 'YYYY-MM-DD' desde una frase con fecha, o null.
 function fechaDeTexto(texto: string): string | null {
   if (/\bhoy\b/.test(texto)) return fechaHoyISO();
@@ -54,6 +57,24 @@ function fechaDeTexto(texto: string): string | null {
     if (dia >= 1 && dia <= 31 && mesIdx >= 0) {
       const anio = fechaHoyISO().slice(0, 4);
       return `${anio}-${String(mesIdx + 1).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
+    }
+  }
+  // Día de la semana: "del sábado", "el viernes pasado".
+  const dSem = texto.match(new RegExp(`\\b(${DIAS_SEMANA.join('|')})\\b`));
+  if (dSem) {
+    const objetivo = DIAS_SEMANA.indexOf(dSem[1]);
+    const hoyDow = new Date().getDay();
+    let delta = (objetivo - hoyDow + 7) % 7; // próxima ocurrencia (hoy incluido)
+    if (/\bpasad[oa]\b/.test(texto)) delta = delta === 0 ? -7 : delta - 7; // la anterior
+    return fechaRelativaISO(delta);
+  }
+  // Solo el día: "matutina del 15" (o "del quince") = este mes.
+  const dSolo = texto.match(/\b(?:del|dia)\s+(\d{1,2}|[a-z]+)\b/);
+  if (dSolo) {
+    const dia = /^\d+$/.test(dSolo[1]) ? Number(dSolo[1]) : NUM_PALABRA[dSolo[1]] ?? 0;
+    if (dia >= 1 && dia <= 31) {
+      const hoy = fechaHoyISO();
+      return `${hoy.slice(0, 7)}-${String(dia).padStart(2, '0')}`;
     }
   }
   return null;
@@ -121,10 +142,14 @@ export function interpretar(textoOriginal: string): Comando {
     return { tipo: 'buscarVersiculo', texto: t, ambito: 'biblia' };
   }
 
-  // Pedir una lección concreta ("lección 3", "lección tres").
+  // Pedir una lección concreta ("lección 3", "lección tres") o la vigente
+  // ("la lección de hoy", "la lección de esta semana").
   if (t.includes('leccion')) {
     const n = primerNumero(t);
     if (n && n >= 1) return { tipo: 'abrirLeccion', numero: n };
+    if (contiene(t, ['hoy', 'esta semana', 'de la semana', 'actual', 'vigente', 'del sabado', 'corresponde', 'toca'])) {
+      return { tipo: 'abrirLeccionActual' };
+    }
     return { tipo: 'ir', destino: 'estudio' };
   }
 
