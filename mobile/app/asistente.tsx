@@ -15,6 +15,7 @@ import {
   getLeccionLocal,
   getLeccionesLocal,
   getVersiculoLocal,
+  leccionVigente,
 } from '../lib/contenido';
 import {
   getLeccion,
@@ -311,9 +312,7 @@ export default function Asistente() {
       const l = lecciones.find((x) => x.fecha === ultimaLeccionFecha.current);
       if (l) return l;
     }
-    const hoy = fechaHoyISO();
-    const pasadas = lecciones.filter((l) => l.fecha <= hoy);
-    return pasadas.length ? pasadas[pasadas.length - 1] : lecciones[0] ?? null;
+    return leccionVigente(lecciones, fechaHoyISO());
   };
 
   // Datos completos de una lección (local con respaldo por red).
@@ -356,13 +355,12 @@ export default function Asistente() {
     ]);
   };
 
-  // "La lección de hoy / de esta semana": la vigente (la última que ya empezó).
+  // "La lección de hoy / de esta semana": la del PRÓXIMO sábado (la que se
+  // está estudiando), no la del sábado que ya pasó.
   const leerLeccionActual = async (g: number) => {
     const lecciones = await listaLecciones();
     if (!vigente(g)) return;
-    const hoy = fechaHoyISO();
-    const pasadas = lecciones.filter((l) => l.fecha <= hoy);
-    const lec = pasadas.length ? pasadas[pasadas.length - 1] : lecciones[0];
+    const lec = leccionVigente(lecciones, fechaHoyISO());
     if (!lec) {
       setEstado('No encontré la lección de esta semana.');
       hablar('No encontré la lección de esta semana.');
@@ -649,12 +647,11 @@ export default function Asistente() {
   };
 
   const hPreguntasSimilares = async (g: number) => {
-    // Lección base: la última pedida por voz, o la vigente (la más reciente).
+    // Lección base: la última pedida por voz, o la vigente (la que se estudia
+    // esta semana, la del próximo sábado).
     let fecha = ultimaLeccionFecha.current;
     if (!fecha) {
-      const hoy = fechaHoyISO();
-      const lecciones = (await getLeccionesLocal()).filter((l) => l.fecha <= hoy);
-      fecha = lecciones.length ? lecciones[lecciones.length - 1].fecha : null;
+      fecha = leccionVigente(await getLeccionesLocal(), fechaHoyISO())?.fecha ?? null;
     }
     const datos = fecha ? await getLeccionLocal(fecha) : null;
     if (!vigente(g)) return;

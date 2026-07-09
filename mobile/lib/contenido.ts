@@ -104,6 +104,18 @@ export async function getLeccionesLocal(): Promise<Leccion[]> {
   return (await cargarStore())?.lecciones ?? [];
 }
 
+// La lección VIGENTE es la que se estudia esta semana: la del PRÓXIMO sábado
+// (fecha >= hoy). La del sábado anterior ya se estudió. Si el plan ya terminó,
+// se queda con la última.
+export function leccionVigente<T extends { fecha: string }>(
+  lecciones: T[],
+  hoy: string
+): T | null {
+  const orden = [...lecciones].sort((a, b) => (a.fecha < b.fecha ? -1 : 1));
+  const proxima = orden.find((l) => l.fecha >= hoy);
+  return proxima ?? orden[orden.length - 1] ?? null;
+}
+
 export async function getLeccionLocal(
   fecha: string
 ): Promise<{ leccion: Leccion; preguntas: Pregunta[]; citasTexto: Record<string, string> } | null> {

@@ -2,7 +2,7 @@ import * as Crypto from 'expo-crypto';
 import { Directory, File, Paths } from 'expo-file-system';
 
 import { leerCache, guardarCache } from './cache';
-import { cargarStore, getLeccionLocal } from './contenido';
+import { cargarStore, getLeccionLocal, leccionVigente } from './contenido';
 import { fechaHoyISO, fechaRelativaISO, fechasDeLaSemana } from './fechas';
 import { segmentosLeccion, segmentosMatutina } from './segmentos';
 
@@ -131,7 +131,7 @@ async function agregarHashes(textos: string[], acc: Set<string>): Promise<void> 
 }
 
 // Hashes de los segmentos de la "semana en curso": las 7 matutinas + la
-// lección vigente (la de mayor fecha que ya empezó).
+// lección vigente (la del PRÓXIMO sábado: la que se está estudiando).
 async function hashesDeLaSemana(): Promise<Set<string>> {
   const store = await cargarStore();
   const out = new Set<string>();
@@ -140,10 +140,7 @@ async function hashesDeLaSemana(): Promise<Set<string>> {
     const v = store.versiculos.find((x) => x.fecha === fecha);
     if (v) await agregarHashes(segmentosMatutina(v), out);
   }
-  const hoy = fechaHoyISO();
-  const vigente = store.lecciones
-    .filter((l) => l.fecha <= hoy)
-    .sort((a, b) => (a.fecha < b.fecha ? 1 : -1))[0];
+  const vigente = leccionVigente(store.lecciones, fechaHoyISO());
   if (vigente) {
     const d = await getLeccionLocal(vigente.fecha);
     if (d) await agregarHashes(segmentosLeccion(d.leccion, d.preguntas, d.citasTexto), out);
