@@ -6,14 +6,22 @@ import { MESES, fechaHoyISO, fechaRelativaISO } from './fechas';
 // conocido y unos pocos verbos), así que un parser determinista es suficiente
 // y no necesita red ni modelo.
 
+// A qué se anclan los "versículos relacionados": una cita dicha (o la última
+// leída), el versículo central de una lección, o las citas de una pregunta.
+export type ObjetivoRelacionados =
+  | { tipo: 'cita'; cita: string | null }
+  | { tipo: 'central'; leccion: number | null }
+  | { tipo: 'pregunta'; pregunta: number; leccion: number | null };
+
 export type Comando =
   | { tipo: 'abrirLeccion'; numero: number }
   | { tipo: 'abrirLeccionActual' } // "la lección de hoy / de esta semana"
+  | { tipo: 'abrirPregunta'; leccion: number | null; pregunta: number }
   | { tipo: 'abrirMatutina'; fecha: string } // 'YYYY-MM-DD'
   | { tipo: 'buscarVersiculo'; texto: string; ambito: 'biblia' | 'lecciones' }
   | { tipo: 'dondeSeCita'; cita: string | null } // null = la última cita leída
   | { tipo: 'preguntasSimilares' }
-  | { tipo: 'versiculosRelacionados'; cita: string | null }
+  | { tipo: 'versiculosRelacionados'; objetivo: ObjetivoRelacionados }
   | { tipo: 'siguiente' }
   | { tipo: 'anterior' }
   | { tipo: 'leer' }
@@ -94,14 +102,47 @@ export function interpretar(textoOriginal: string): Comando {
 
   // --- Búsquedas (van ANTES que lección/matutina para no chocar) ---
 
-  // "preguntas parecidas / similares / relacionadas" (a la lección actual).
+  // Números en palabras a dígitos, para leer "pregunta uno de la lección dos".
+  const tn = palabrasANumeros(t);
+  const numLeccion = tn.match(/leccion\s+(?:numero\s+)?(\d{1,2})/);
+  const numPregunta = tn.match(/pregunta\s+(?:numero\s+)?(\d{1,2})/);
+
+  // "versículos relacionados ..." con sus tres anclas posibles.
+  if (t.includes('versicul') && contiene(t, ['relacionad', 'parecid', 'similar'])) {
+    // "... con el versículo central de la lección 2"
+    if (t.includes('central')) {
+      return {
+        tipo: 'versiculosRelacionados',
+        objetivo: { tipo: 'central', leccion: numLeccion ? Number(numLeccion[1]) : null },
+      };
+    }
+    // "... con (las respuestas/citas de) la pregunta 1 de la lección 2"
+    if (numPregunta) {
+      return {
+        tipo: 'versiculosRelacionados',
+        objetivo: {
+          tipo: 'pregunta',
+          pregunta: Number(numPregunta[1]),
+          leccion: numLeccion ? Number(numLeccion[1]) : null,
+        },
+      };
+    }
+    // "... con Juan 3 16" (o la última cita leída).
+    return { tipo: 'versiculosRelacionados', objetivo: { tipo: 'cita', cita: citaHablada(t) } };
+  }
+
+  // "preguntas parecidas / similares" (a la lección actual).
   if (t.includes('pregunta') && contiene(t, ['parecid', 'similar', 'relacionad'])) {
     return { tipo: 'preguntasSimilares' };
   }
 
-  // "versículos relacionados [a Juan 3 16]".
-  if (t.includes('versicul') && contiene(t, ['relacionad', 'parecid', 'similar'])) {
-    return { tipo: 'versiculosRelacionados', cita: citaHablada(t) };
+  // "la pregunta 3 de la lección 2" / "léeme la pregunta uno".
+  if (numPregunta) {
+    return {
+      tipo: 'abrirPregunta',
+      pregunta: Number(numPregunta[1]),
+      leccion: numLeccion ? Number(numLeccion[1]) : null,
+    };
   }
 
   // "¿dónde más se cita / menciona / aparece [Juan 3 16]?"

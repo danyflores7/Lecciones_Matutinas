@@ -7,7 +7,7 @@ import {
   useSpeechRecognitionEvent,
 } from 'expo-speech-recognition';
 
-import { interpretar, type Comando } from '../lib/comandos';
+import { interpretar, type Comando, type ObjetivoRelacionados } from '../lib/comandos';
 import { citaHablada, normalizar } from '../lib/citas';
 import {
   buscarTextoLocal,
@@ -29,7 +29,12 @@ import {
   similaresDeLeccion,
   versiculosRelacionados,
 } from '../lib/biblia';
-import { citaParaVoz, segmentosLeccion, segmentosMatutina } from '../lib/segmentos';
+import {
+  citaParaVoz,
+  segmentosDePregunta,
+  segmentosLeccion,
+  segmentosMatutina,
+} from '../lib/segmentos';
 import { continuar, detenerVoz, pausar, reproducirPartes } from '../lib/voz';
 import { getVelocidad } from '../lib/almacen';
 import { fechaDiaMes, fechaHoyISO, sumarDias } from '../lib/fechas';
@@ -39,8 +44,10 @@ type ItemResultado = { etiqueta: string; sub?: string; partes: string[] };
 type Resultados = { titulo: string; items: ItemResultado[]; pie?: string };
 
 const AYUDA =
-  'Puedes decir: matutina de hoy. Lección 3. Busca el versículo que dice, de tal manera amó Dios al mundo. ' +
-  'Dónde se cita Juan 3 16. Versículos relacionados. Preguntas similares. Siguiente. Anterior. Pausar.';
+  'Puedes decir: matutina de hoy. Lección 3. La pregunta 2 de la lección 3. ' +
+  'Busca el versículo que dice, de tal manera amó Dios al mundo. Dónde se cita Juan 3 16. ' +
+  'Versículos relacionados con el versículo central de la lección 2. Preguntas similares. ' +
+  'Siguiente. Anterior. Pausar.';
 
 const BIENVENIDA = 'Te escucho. Di lo que quieres escuchar, o di ayuda.';
 
@@ -64,6 +71,7 @@ export default function Asistente() {
   const ultimo = useRef<Ultimo>(null);
   const ultimaCita = useRef<string | null>(null);
   const ultimaLeccionFecha = useRef<string | null>(null);
+  const ultimaPregunta = useRef<number | null>(null); // orden, para "siguiente"
   const idxResultado = useRef(0);
   // Generación de comandos: cada comando nuevo la incrementa. Un handler
   // asíncrono viejo (p. ej. esperando red) se descarta si ya no es el vigente,
@@ -273,6 +281,7 @@ export default function Asistente() {
     }
     ultimo.current = { tipo: 'matutina', fecha };
     ultimaCita.current = v.cita;
+    ultimaPregunta.current = null;
     setResultados(null);
     setEstado(`Leyendo la matutina del ${fechaDiaMes(fecha)} · ${v.cita}`);
     reproducir([`Matutina del ${fechaDiaMes(fecha)}.`, ...segmentosMatutina(v)]);
@@ -287,6 +296,37 @@ export default function Asistente() {
     } catch {
       return [];
     }
+  };
+
+  // Resuelve "la lección N" (o, sin número, la última pedida / la vigente).
+  const resolverLeccion = async (numero: number | null): Promise<Leccion | null> => {
+    const lecciones = await listaLecciones();
+    if (numero !== null) {
+      const cands = lecciones
+        .filter((l) => l.numero === numero)
+        .sort((a, b) => (a.fecha < b.fecha ? 1 : -1));
+      return cands[0] ?? null;
+    }
+    if (ultimaLeccionFecha.current) {
+      const l = lecciones.find((x) => x.fecha === ultimaLeccionFecha.current);
+      if (l) return l;
+    }
+    const hoy = fechaHoyISO();
+    const pasadas = lecciones.filter((l) => l.fecha <= hoy);
+    return pasadas.length ? pasadas[pasadas.length - 1] : lecciones[0] ?? null;
+  };
+
+  // Datos completos de una lección (local con respaldo por red).
+  const datosDeLeccion = async (lec: Leccion) => {
+    let datos = await getLeccionLocal(lec.fecha);
+    if (!datos) {
+      try {
+        datos = await getLeccion(lec.fecha);
+      } catch {
+        datos = null;
+      }
+    }
+    return datos;
   };
 
   const leerLeccionDeFecha = async (lec: Leccion, g: number) => {
@@ -307,6 +347,7 @@ export default function Asistente() {
     ultimo.current = { tipo: 'leccion', numero: lec.numero };
     ultimaLeccionFecha.current = lec.fecha;
     ultimaCita.current = lec.versiculo_central_cita;
+    ultimaPregunta.current = null;
     setResultados(null);
     setEstado(`Leyendo la lección ${lec.numero}: ${lec.titulo}.`);
     reproducir([
@@ -348,11 +389,42 @@ export default function Asistente() {
     ultimo.current = { tipo: 'leccion', numero };
     ultimaLeccionFecha.current = lec.fecha;
     ultimaCita.current = lec.versiculo_central_cita;
+    ultimaPregunta.current = null;
     setResultados(null);
     setEstado(`Leyendo la lección ${numero}: ${lec.titulo}.`);
     reproducir([
       `Lección ${numero}. ${lec.titulo}.`,
       ...segmentosLeccion(datos.leccion, datos.preguntas, datos.citasTexto),
+    ]);
+  };
+
+  // "La pregunta 3 de la lección 2" (sin lección: la última o la vigente).
+  const leerPregunta = async (leccionNum: number | null, orden: number, g: number) => {
+    const lec = await resolverLeccion(leccionNum);
+    const datos = lec ? await datosDeLeccion(lec) : null;
+    if (!vigente(g)) return;
+    if (!lec || !datos) {
+      setEstado('No pude cargar la lección. Conéctate a internet una vez.');
+      hablar('No pude cargar la lección. Conéctate a internet una vez.');
+      return;
+    }
+    const p = datos.preguntas.find((x) => x.orden === orden);
+    if (!p) {
+      const msg = `La lección ${lec.numero} no tiene pregunta ${orden}; llega hasta la ${datos.preguntas.length}.`;
+      setEstado(msg);
+      hablar(msg);
+      return;
+    }
+    ultimo.current = { tipo: 'leccion', numero: lec.numero };
+    ultimaLeccionFecha.current = lec.fecha;
+    ultimaPregunta.current = orden;
+    if (p.citas?.length) ultimaCita.current = p.citas[0];
+    setResultados(null);
+    setEstado(`Lección ${lec.numero}, pregunta ${orden}.`);
+    reproducir([
+      `Lección ${lec.numero}. ${lec.titulo}.`,
+      `Pregunta ${orden}.`,
+      ...segmentosDePregunta(p, datos.citasTexto),
     ]);
   };
 
@@ -374,7 +446,12 @@ export default function Asistente() {
       return;
     }
     if (u.tipo === 'matutina') leerMatutina(sumarDias(u.fecha, dir), g);
-    else if (u.numero + dir >= 1) leerLeccion(u.numero + dir, g);
+    else if (u.tipo === 'leccion' && ultimaPregunta.current !== null) {
+      // Estaba en una pregunta: "siguiente" pasa a la pregunta de al lado.
+      const orden = ultimaPregunta.current + dir;
+      if (orden >= 1) leerPregunta(u.numero, orden, g);
+      else hablar('Es la primera pregunta.');
+    } else if (u.numero + dir >= 1) leerLeccion(u.numero + dir, g);
     else hablar('Es la primera lección.');
   };
 
@@ -489,33 +566,85 @@ export default function Asistente() {
     );
   };
 
-  const hVersiculosRelacionados = async (citaPedida: string | null, g: number) => {
-    const cita = citaPedida ?? ultimaCita.current;
-    if (!cita) {
-      hablar('Dime de qué versículo. Por ejemplo: versículos relacionados a Juan 3 16.');
-      setEstado('Dime de qué versículo. Por ejemplo: “versículos relacionados a Juan 3:16”.');
-      return;
+  const hVersiculosRelacionados = async (objetivo: ObjetivoRelacionados, g: number) => {
+    // Resuelve el ancla: una cita suelta, el versículo central de una lección,
+    // o TODAS las citas de una pregunta.
+    let citas: string[] = [];
+    let descripcion = ''; // para pantalla ("Juan 3:16")
+    let descripcionVoz = ''; // para voz ("Juan capítulo 3, versículo 16")
+
+    if (objetivo.tipo === 'cita') {
+      const cita = objetivo.cita ?? ultimaCita.current;
+      if (!cita) {
+        hablar('Dime de qué versículo. Por ejemplo: versículos relacionados a Juan 3 16.');
+        setEstado('Dime de qué versículo. Por ejemplo: “versículos relacionados a Juan 3:16”.');
+        return;
+      }
+      citas = [cita];
+      descripcion = cita;
+      descripcionVoz = citaParaVoz(cita);
+    } else {
+      const lec = await resolverLeccion(objetivo.leccion);
+      const datos = lec ? await datosDeLeccion(lec) : null;
+      if (!vigente(g)) return;
+      if (!lec || !datos) {
+        setEstado('No pude cargar la lección. Conéctate a internet una vez.');
+        hablar('No pude cargar la lección. Conéctate a internet una vez.');
+        return;
+      }
+      if (objetivo.tipo === 'central') {
+        citas = [lec.versiculo_central_cita];
+        descripcion = `el versículo central de la lección ${lec.numero} (${lec.versiculo_central_cita})`;
+        descripcionVoz = `el versículo central de la lección ${lec.numero}, ${citaParaVoz(lec.versiculo_central_cita)}`;
+      } else {
+        const p = datos.preguntas.find((x) => x.orden === objetivo.pregunta);
+        if (!p) {
+          const msg = `La lección ${lec.numero} no tiene pregunta ${objetivo.pregunta}.`;
+          setEstado(msg);
+          hablar(msg);
+          return;
+        }
+        citas = p.citas ?? [];
+        descripcion = `las citas de la pregunta ${p.orden} de la lección ${lec.numero}`;
+        descripcionVoz = descripcion;
+        if (!citas.length) {
+          const msg = `La pregunta ${p.orden} de la lección ${lec.numero} no tiene citas bíblicas.`;
+          setEstado(msg);
+          hablar(msg);
+          return;
+        }
+      }
     }
+
     if (!(await avisoDatos())) return;
-    const rel = await versiculosRelacionados(cita);
+    // Junta los relacionados de todas las citas ancla (sin repetir, sin
+    // devolver las propias anclas), hasta 8.
+    const anclas = new Set(citas);
+    const vistos = new Set<string>();
+    const items: ItemResultado[] = [];
+    for (const c of citas) {
+      const rel = await versiculosRelacionados(c);
+      for (const r of rel) {
+        if (anclas.has(r.cita) || vistos.has(r.cita)) continue;
+        vistos.add(r.cita);
+        items.push({ etiqueta: r.cita, partes: [`${citaParaVoz(r.cita)}.`, r.texto] });
+        if (items.length >= 8) break;
+      }
+      if (items.length >= 8) break;
+    }
     if (!vigente(g)) return;
-    const items = rel.map((r) => ({
-      etiqueta: r.cita,
-      partes: [`${citaParaVoz(r.cita)}.`, r.texto],
-    }));
-    const citaVoz = citaParaVoz(cita);
     presentar(
       {
-        titulo: `Versículos relacionados con ${cita}`,
+        titulo: `Versículos relacionados con ${descripcion}`,
         items,
         pie: 'Referencias cruzadas: openbible.info (CC-BY)',
       },
       items.length
-        ? `Hay ${items.length} versículos relacionados con ${cita}:`
-        : `No tengo versículos relacionados para ${cita}.`,
+        ? `Hay ${items.length} versículos relacionados con ${descripcion}:`
+        : `No tengo versículos relacionados para ${descripcion}.`,
       items.length
-        ? `Hay ${items.length} versículos relacionados con ${citaVoz}.`
-        : `No tengo versículos relacionados para ${citaVoz}.`
+        ? `Hay ${items.length} versículos relacionados con ${descripcionVoz}.`
+        : `No tengo versículos relacionados para ${descripcionVoz}.`
     );
   };
 
@@ -561,12 +690,14 @@ export default function Asistente() {
         return leerLeccion(c.numero, g);
       case 'abrirLeccionActual':
         return leerLeccionActual(g);
+      case 'abrirPregunta':
+        return leerPregunta(c.leccion, c.pregunta, g);
       case 'buscarVersiculo':
         return hBuscarVersiculo(c.texto, c.ambito, g);
       case 'dondeSeCita':
         return hDondeSeCita(c.cita, g);
       case 'versiculosRelacionados':
-        return hVersiculosRelacionados(c.cita, g);
+        return hVersiculosRelacionados(c.objetivo, g);
       case 'preguntasSimilares':
         return hPreguntasSimilares(g);
       case 'siguiente':

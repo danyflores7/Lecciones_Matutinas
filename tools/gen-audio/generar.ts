@@ -86,8 +86,11 @@ async function main() {
     add([`Lección ${(l as any).numero}. ${(l as any).titulo}.`]);
   }
   add([
-    'Puedes decir: matutina de hoy. Lección 3. Busca el versículo que dice, de tal manera amó Dios al mundo. ' +
-      'Dónde se cita Juan 3 16. Versículos relacionados. Preguntas similares. Siguiente. Anterior. Pausar.',
+    'Puedes decir: matutina de hoy. Lección 3. La pregunta 2 de la lección 3. ' +
+      'Busca el versículo que dice, de tal manera amó Dios al mundo. Dónde se cita Juan 3 16. ' +
+      'Versículos relacionados con el versículo central de la lección 2. Preguntas similares. ' +
+      'Siguiente. Anterior. Pausar.',
+    'Es la primera pregunta.',
     'No te entendí. Di ayuda para escuchar los comandos.',
     'Primero pide una matutina o una lección.',
     'Abriendo Inicio.',
