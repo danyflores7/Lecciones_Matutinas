@@ -174,6 +174,33 @@ export async function similaresDePregunta(preguntaId: number): Promise<PreguntaS
   return r?.similares[String(preguntaId)] ?? [];
 }
 
+// LECCIONES parecidas a una lección: agrupa los similares de sus preguntas
+// POR LECCIÓN destino y ordena por cuántas coincidencias tiene cada una.
+export async function leccionesSimilares(
+  preguntaIds: number[],
+  excluirFecha: string,
+  limite = 3
+): Promise<{ numero: number; titulo: string; fecha: string; veces: number }[]> {
+  const r = await cargarRelPreg();
+  if (!r) return [];
+  const conteo = new Map<string, { numero: number; titulo: string; fecha: string; veces: number }>();
+  for (const id of preguntaIds) {
+    for (const s of r.similares[String(id)] ?? []) {
+      if (s.leccion_fecha === excluirFecha) continue;
+      const prev = conteo.get(s.leccion_fecha);
+      if (prev) prev.veces++;
+      else
+        conteo.set(s.leccion_fecha, {
+          numero: s.leccion_numero,
+          titulo: s.leccion_titulo,
+          fecha: s.leccion_fecha,
+          veces: 1,
+        });
+    }
+  }
+  return [...conteo.values()].sort((a, b) => b.veces - a.veces).slice(0, limite);
+}
+
 // Similares agregadas de una LECCIÓN: junta las de todas sus preguntas y
 // ordena por frecuencia (lo que más se repite va primero).
 export async function similaresDeLeccion(

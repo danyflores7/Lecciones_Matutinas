@@ -87,10 +87,14 @@ async function main() {
   }
   add([
     'Puedes decir: matutina de hoy. Lección 3. La pregunta 2 de la lección 3. ' +
+      'El versículo central de la lección 2. El título de la lección 3. ' +
+      'Qué lección se parece a la lección 2. ' +
       'Busca el versículo que dice, de tal manera amó Dios al mundo. Dónde se cita Juan 3 16. ' +
       'Versículos relacionados con el versículo central de la lección 2. Preguntas similares. ' +
       'Siguiente. Anterior. Pausar.',
     'Es la primera pregunta.',
+    'Revisa el capítulo y el versículo.',
+    'Dime también el número del versículo. Por ejemplo: Salmos 23 1.',
     'No te entendí. Di ayuda para escuchar los comandos.',
     'Primero pide una matutina o una lección.',
     'Abriendo Inicio.',

@@ -17,6 +17,9 @@ export type Comando =
   | { tipo: 'abrirLeccion'; numero: number }
   | { tipo: 'abrirLeccionActual' } // "la lección de hoy / de esta semana"
   | { tipo: 'abrirPregunta'; leccion: number | null; pregunta: number }
+  | { tipo: 'versiculoCentral'; leccion: number | null } // solo el central
+  | { tipo: 'tituloLeccion'; leccion: number | null } // solo el título
+  | { tipo: 'leccionesSimilares'; leccion: number | null } // lecciones parecidas
   | { tipo: 'abrirMatutina'; fecha: string } // 'YYYY-MM-DD'
   | { tipo: 'buscarVersiculo'; texto: string; ambito: 'biblia' | 'lecciones' }
   | { tipo: 'dondeSeCita'; cita: string | null } // null = la última cita leída
@@ -136,6 +139,21 @@ export function interpretar(textoOriginal: string): Comando {
     return { tipo: 'preguntasSimilares' };
   }
 
+  // "¿qué lección es parecida a la lección 2?" / "lecciones similares".
+  if (t.includes('leccion') && contiene(t, ['parecid', 'similar', 'se parece'])) {
+    return { tipo: 'leccionesSimilares', leccion: numLeccion ? Number(numLeccion[1]) : null };
+  }
+
+  // "solo el versículo central de la lección 2".
+  if (t.includes('central')) {
+    return { tipo: 'versiculoCentral', leccion: numLeccion ? Number(numLeccion[1]) : null };
+  }
+
+  // "dime el título de la lección 3".
+  if (t.includes('titulo')) {
+    return { tipo: 'tituloLeccion', leccion: numLeccion ? Number(numLeccion[1]) : null };
+  }
+
   // "la pregunta 3 de la lección 2" / "léeme la pregunta uno".
   if (numPregunta) {
     return {
@@ -177,11 +195,11 @@ export function interpretar(textoOriginal: string): Comando {
   if (dice && dice[1].trim().length >= 4 && !contiene(t, ['matutina', 'leccion'])) {
     return { tipo: 'buscarVersiculo', texto: dice[1].trim(), ambito: 'biblia' };
   }
-  // "lee/abre Juan 3 16": una cita explícita con verbo de lectura.
-  if (
-    citaHablada(t) &&
-    contiene(t, ['lee', 'leer', 'leeme', 'abre', 'abrir', 'escucha', 'escuchar', 'reproduce', 'dime'])
-  ) {
+  // Una cita bíblica dicha directa ("Juan 3 16", "lee Génesis 5 3", "dime el
+  // versículo Salmos 23 1"): se lee de la Biblia completa, esté o no en las
+  // lecciones. (Las intenciones con cita —dónde se cita, relacionados— ya se
+  // atendieron arriba.)
+  if (citaHablada(t) && !contiene(t, ['matutina', 'devocional'])) {
     return { tipo: 'buscarVersiculo', texto: t, ambito: 'biblia' };
   }
 

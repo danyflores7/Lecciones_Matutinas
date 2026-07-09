@@ -2,7 +2,7 @@
   "expo": {
     "name": "Lecciones y Matutinas",
     "slug": "matutinas",
-    "version": "1.9.0",
+    "version": "1.10.0",
     "orientation": "portrait",
     "icon": "./assets/logo.png",
     "scheme": "matutinas",
@@ -13,7 +13,7 @@
     },
     "android": {
       "package": "com.appiglesia.matutinas",
-      "versionCode": 11,
+      "versionCode": 12,
       "adaptiveIcon": {
         "backgroundColor": "#FFFFFF",
         "foregroundImage": "./assets/logo-adaptive.png"

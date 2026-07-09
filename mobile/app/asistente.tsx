@@ -26,6 +26,7 @@ import {
 import {
   bibliaDisponible,
   buscarEnBiblia,
+  leccionesSimilares,
   obtenerVersiculo,
   similaresDeLeccion,
   versiculosRelacionados,
@@ -46,6 +47,8 @@ type Resultados = { titulo: string; items: ItemResultado[]; pie?: string };
 
 const AYUDA =
   'Puedes decir: matutina de hoy. Lección 3. La pregunta 2 de la lección 3. ' +
+  'El versículo central de la lección 2. El título de la lección 3. ' +
+  'Qué lección se parece a la lección 2. ' +
   'Busca el versículo que dice, de tal manera amó Dios al mundo. Dónde se cita Juan 3 16. ' +
   'Versículos relacionados con el versículo central de la lección 2. Preguntas similares. ' +
   'Siguiente. Anterior. Pausar.';
@@ -426,6 +429,72 @@ export default function Asistente() {
     ]);
   };
 
+  // "Solo el versículo central de la lección N."
+  const hVersiculoCentral = async (leccionNum: number | null, g: number) => {
+    const lec = await resolverLeccion(leccionNum);
+    if (!vigente(g)) return;
+    if (!lec) {
+      setEstado('No pude cargar la lección. Conéctate a internet una vez.');
+      hablar('No pude cargar la lección. Conéctate a internet una vez.');
+      return;
+    }
+    ultimaLeccionFecha.current = lec.fecha;
+    ultimaCita.current = lec.versiculo_central_cita;
+    ultimo.current = { tipo: 'leccion', numero: lec.numero };
+    setResultados(null);
+    setEstado(`Versículo central de la lección ${lec.numero}: ${lec.versiculo_central_cita}`);
+    reproducir([
+      'Versículo central.',
+      `${citaParaVoz(lec.versiculo_central_cita)}.`,
+      ...(lec.versiculo_central_texto ? [lec.versiculo_central_texto] : []),
+    ]);
+  };
+
+  // "Solo el título de la lección N."
+  const hTituloLeccion = async (leccionNum: number | null, g: number) => {
+    const lec = await resolverLeccion(leccionNum);
+    if (!vigente(g)) return;
+    if (!lec) {
+      setEstado('No pude cargar la lección. Conéctate a internet una vez.');
+      hablar('No pude cargar la lección. Conéctate a internet una vez.');
+      return;
+    }
+    ultimaLeccionFecha.current = lec.fecha;
+    ultimo.current = { tipo: 'leccion', numero: lec.numero };
+    setResultados(null);
+    setEstado(`Lección ${lec.numero}: ${lec.titulo}`);
+    reproducir([`Lección ${lec.numero}. ${lec.titulo}.`]);
+  };
+
+  // "¿Qué lección se parece a la lección N?" -> títulos de las más parecidas.
+  const hLeccionesSimilares = async (leccionNum: number | null, g: number) => {
+    const lec = await resolverLeccion(leccionNum);
+    const datos = lec ? await datosDeLeccion(lec) : null;
+    if (!vigente(g)) return;
+    if (!lec || !datos) {
+      setEstado('No pude cargar la lección. Conéctate a internet una vez.');
+      hablar('No pude cargar la lección. Conéctate a internet una vez.');
+      return;
+    }
+    if (!(await avisoDatos())) return;
+    const sims = await leccionesSimilares(
+      datos.preguntas.map((p) => p.id),
+      lec.fecha
+    );
+    if (!vigente(g)) return;
+    const items = sims.map((s) => ({
+      etiqueta: `Lección ${s.numero}`,
+      sub: s.titulo,
+      partes: [`Lección ${s.numero}. ${s.titulo}.`],
+    }));
+    presentar(
+      { titulo: `Lecciones parecidas a la lección ${lec.numero}`, items },
+      items.length
+        ? `La más parecida a la lección ${lec.numero} es la lección ${sims[0].numero}: ${sims[0].titulo}.`
+        : `No encontré lecciones parecidas a la lección ${lec.numero}.`
+    );
+  };
+
   const relativo = (dir: 1 | -1, g: number) => {
     // Con resultados en pantalla, "siguiente/anterior" navega la lista.
     if (resultados?.items.length) {
@@ -469,24 +538,36 @@ export default function Asistente() {
     ambito: 'biblia' | 'lecciones',
     g: number
   ) => {
-    // ¿Dijo una cita concreta? ("Juan 3 16") -> lookup directo.
+    // ¿Dijo una cita concreta? ("Juan 3 16") -> lookup directo en la Biblia
+    // COMPLETA (esté o no citada en las lecciones).
     const cita = citaHablada(normalizar(textoBusqueda));
-    if (cita && cita.includes(':')) {
+    if (cita) {
+      if (!cita.includes(':')) {
+        const msg = 'Dime también el número del versículo. Por ejemplo: Salmos 23 1.';
+        setEstado(msg);
+        hablar(msg);
+        return;
+      }
       if (!(await avisoDatos())) return;
       const v = await obtenerVersiculo(cita);
       if (!vigente(g)) return;
-      if (v) {
-        ultimaCita.current = v.cita;
-        const lugares = await dondeSeCita(v.cita);
-        if (!vigente(g)) return;
-        const extra = lugares.length
-          ? ` También se cita en ${lugares.length} ${lugares.length === 1 ? 'lugar' : 'lugares'} de la app; di "dónde se cita" para escucharlos.`
-          : '';
-        setResultados(null);
-        setEstado(`${v.cita}${extra}`);
-        reproducir([`${citaParaVoz(v.cita)}.`, v.texto, ...(extra ? [extra.trim()] : [])]);
+      if (!v) {
+        // El libro sí existe (citaHablada lo validó); el capítulo o el verso no.
+        const msg = `${cita} no existe en la Biblia. Revisa el capítulo y el versículo.`;
+        setEstado(msg);
+        reproducir([`${citaParaVoz(cita)}, no existe en la Biblia.`, 'Revisa el capítulo y el versículo.']);
         return;
       }
+      ultimaCita.current = v.cita;
+      const lugares = await dondeSeCita(v.cita);
+      if (!vigente(g)) return;
+      const extra = lugares.length
+        ? ` También se cita en ${lugares.length} ${lugares.length === 1 ? 'lugar' : 'lugares'} de la app; di "dónde se cita" para escucharlos.`
+        : '';
+      setResultados(null);
+      setEstado(`${v.cita}${extra}`);
+      reproducir([`${citaParaVoz(v.cita)}.`, v.texto, ...(extra ? [extra.trim()] : [])]);
+      return;
     }
     // Fragmento recordado -> búsqueda por texto.
     setEstado('Buscando…');
@@ -689,6 +770,12 @@ export default function Asistente() {
         return leerLeccionActual(g);
       case 'abrirPregunta':
         return leerPregunta(c.leccion, c.pregunta, g);
+      case 'versiculoCentral':
+        return hVersiculoCentral(c.leccion, g);
+      case 'tituloLeccion':
+        return hTituloLeccion(c.leccion, g);
+      case 'leccionesSimilares':
+        return hLeccionesSimilares(c.leccion, g);
       case 'buscarVersiculo':
         return hBuscarVersiculo(c.texto, c.ambito, g);
       case 'dondeSeCita':
