@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import { anclaDeCita, normalizar } from './citas';
 import {
   getLecciones,
   getTodasLasCitas,
@@ -120,4 +121,97 @@ export async function getLeccionLocal(
     }
   }
   return { leccion, preguntas, citasTexto };
+}
+
+export type LugarCita =
+  | {
+      tipo: 'pregunta';
+      leccionNumero: number;
+      leccionTitulo: string;
+      leccionFecha: string;
+      orden: number;
+      pregunta: string;
+    }
+  | { tipo: 'central'; leccionNumero: number; leccionTitulo: string; leccionFecha: string }
+  | { tipo: 'matutina'; fecha: string; cita: string; tema: string };
+
+// ¿Dónde se cita este versículo en el contenido de la app? Compara por ancla
+// (libro + capítulo + primer verso), así "Juan 3:16" empata con "Juan 3:16-17".
+export async function dondeSeCita(cita: string): Promise<LugarCita[]> {
+  const s = await cargarStore();
+  const objetivo = anclaDeCita(cita);
+  if (!s || !objetivo) return [];
+  const porId = new Map(s.lecciones.map((l) => [l.id, l]));
+  const out: LugarCita[] = [];
+  for (const p of s.preguntas) {
+    if ((p.citas ?? []).some((c) => anclaDeCita(c) === objetivo)) {
+      const l = porId.get(p.leccion_id);
+      if (l) {
+        out.push({
+          tipo: 'pregunta',
+          leccionNumero: l.numero,
+          leccionTitulo: l.titulo,
+          leccionFecha: l.fecha,
+          orden: p.orden,
+          pregunta: p.pregunta,
+        });
+      }
+    }
+  }
+  for (const l of s.lecciones) {
+    if (anclaDeCita(l.versiculo_central_cita) === objetivo) {
+      out.push({
+        tipo: 'central',
+        leccionNumero: l.numero,
+        leccionTitulo: l.titulo,
+        leccionFecha: l.fecha,
+      });
+    }
+  }
+  for (const v of s.versiculos) {
+    if (anclaDeCita(v.cita) === objetivo) {
+      out.push({ tipo: 'matutina', fecha: v.fecha, cita: v.cita, tema: v.tema });
+    }
+  }
+  return out;
+}
+
+// Busca un fragmento de texto dentro del contenido de las LECCIONES y
+// matutinas (los textos bíblicos citados). Sin IA: frase exacta o cobertura
+// de palabras, igual que la búsqueda en la Biblia.
+export async function buscarTextoLocal(
+  consulta: string,
+  limite = 5
+): Promise<{ etiqueta: string; texto: string }[]> {
+  const s = await cargarStore();
+  if (!s) return [];
+  const q = normalizar(consulta).replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+  const tokens = q.split(' ').filter((t) => t.length >= 3);
+  if (!q) return [];
+  const puntuados: { score: number; etiqueta: string; texto: string }[] = [];
+  const evaluar = (etiqueta: string, texto: string | null) => {
+    if (!texto) return;
+    const nt = normalizar(texto);
+    let score = 0;
+    if (nt.includes(q)) score = 1000;
+    else if (tokens.length) {
+      let hits = 0;
+      for (const tok of tokens) if (nt.includes(tok)) hits++;
+      if (hits / tokens.length >= 0.65) score = (hits / tokens.length) * 100;
+    }
+    if (score > 0) puntuados.push({ score, etiqueta, texto });
+  };
+  for (const [cita, texto] of Object.entries(s.citas)) evaluar(cita, texto);
+  for (const v of s.versiculos) evaluar(v.cita, v.texto);
+  puntuados.sort((a, b) => b.score - a.score);
+  // Quita duplicados por texto (la misma cita puede estar en ambas fuentes).
+  const vistos = new Set<string>();
+  const out: { etiqueta: string; texto: string }[] = [];
+  for (const p of puntuados) {
+    if (vistos.has(p.etiqueta)) continue;
+    vistos.add(p.etiqueta);
+    out.push({ etiqueta: p.etiqueta, texto: p.texto });
+    if (out.length >= limite) break;
+  }
+  return out;
 }

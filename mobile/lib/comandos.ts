@@ -1,12 +1,18 @@
+import { citaHablada, normalizar as sinAcentos } from './citas';
 import { MESES, fechaHoyISO, fechaRelativaISO } from './fechas';
 
 // Intérprete de comandos por VOZ, 100% por reglas (sin IA). El dominio es fijo
-// y pequeño (lecciones 1-26, matutinas por fecha, y unos pocos verbos), así que
-// un parser determinista es suficiente y no necesita red ni modelo.
+// y pequeño (lecciones 1-26, matutinas por fecha, búsquedas sobre contenido
+// conocido y unos pocos verbos), así que un parser determinista es suficiente
+// y no necesita red ni modelo.
 
 export type Comando =
   | { tipo: 'abrirLeccion'; numero: number }
   | { tipo: 'abrirMatutina'; fecha: string } // 'YYYY-MM-DD'
+  | { tipo: 'buscarVersiculo'; texto: string; ambito: 'biblia' | 'lecciones' }
+  | { tipo: 'dondeSeCita'; cita: string | null } // null = la última cita leída
+  | { tipo: 'preguntasSimilares' }
+  | { tipo: 'versiculosRelacionados'; cita: string | null }
   | { tipo: 'siguiente' }
   | { tipo: 'anterior' }
   | { tipo: 'leer' }
@@ -15,19 +21,6 @@ export type Comando =
   | { tipo: 'ir'; destino: 'inicio' | 'calendario' | 'estudio' }
   | { tipo: 'ayuda' }
   | { tipo: 'desconocido' };
-
-// Quita acentos y baja a minúsculas (Hermes no siempre trae String.normalize,
-// así que se hace a mano).
-function sinAcentos(s: string): string {
-  return s
-    .toLowerCase()
-    .replace(/[áàä]/g, 'a')
-    .replace(/[éèë]/g, 'e')
-    .replace(/[íìï]/g, 'i')
-    .replace(/[óòö]/g, 'o')
-    .replace(/[úùü]/g, 'u')
-    .replace(/ñ/g, 'n');
-}
 
 const NUM_PALABRA: Record<string, number> = {
   uno: 1, una: 1, un: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5, seis: 6,
@@ -74,6 +67,58 @@ export function interpretar(textoOriginal: string): Comando {
 
   if (contiene(t, ['ayuda', 'que puedo', 'que digo', 'comandos', 'que hago'])) {
     return { tipo: 'ayuda' };
+  }
+
+  // --- Búsquedas (van ANTES que lección/matutina para no chocar) ---
+
+  // "preguntas parecidas / similares / relacionadas" (a la lección actual).
+  if (t.includes('pregunta') && contiene(t, ['parecid', 'similar', 'relacionad'])) {
+    return { tipo: 'preguntasSimilares' };
+  }
+
+  // "versículos relacionados [a Juan 3 16]".
+  if (t.includes('versicul') && contiene(t, ['relacionad', 'parecid', 'similar'])) {
+    return { tipo: 'versiculosRelacionados', cita: citaHablada(t) };
+  }
+
+  // "¿dónde más se cita / menciona / aparece [Juan 3 16]?"
+  if (
+    /\b(donde|en que|en cuales|en cuantas)\b.*\b(cita|citado|menciona|mencionado|aparece|usa)/.test(t) ||
+    t.includes('donde mas')
+  ) {
+    return { tipo: 'dondeSeCita', cita: citaHablada(t) };
+  }
+
+  // "busca el versículo que dice ..." / "busca ... en la Biblia".
+  const busca = t.match(
+    /\b(?:busca|buscar|buscame|busquame|encuentra|encuentrame)\b\s*(.*)$/
+  );
+  const ambitoLecciones = /\ben\s+las?\s+lecciones\b/.test(t);
+  if (busca && (ambitoLecciones || !t.includes('leccion')) && !contiene(t, ['matutina', 'devocional'])) {
+    let resto = busca[1]
+      .replace(/\ben\s+(?:toda\s+)?la\s+biblia\b/g, ' ')
+      .replace(/\ben\s+las?\s+lecciones\b/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .replace(/^(?:el|la|un|una)\s+/, '')
+      .replace(/^(?:versiculo|texto|cita)\s*/, '')
+      .replace(/^(?:el\s+|la\s+)?(?:que\s+(?:dice|diga|dice asi)|donde\s+dice)\s*/, '')
+      .trim();
+    if (resto) {
+      return { tipo: 'buscarVersiculo', texto: resto, ambito: ambitoLecciones ? 'lecciones' : 'biblia' };
+    }
+  }
+  // "qué dice Juan 3 16" / "el versículo que dice ..." sin verbo "busca".
+  const dice = t.match(/\b(?:que|donde)\s+(?:dice|diga)\b\s*(.*)$/);
+  if (dice && dice[1].trim().length >= 4 && !contiene(t, ['matutina', 'leccion'])) {
+    return { tipo: 'buscarVersiculo', texto: dice[1].trim(), ambito: 'biblia' };
+  }
+  // "lee/abre Juan 3 16": una cita explícita con verbo de lectura.
+  if (
+    citaHablada(t) &&
+    contiene(t, ['lee', 'leer', 'leeme', 'abre', 'abrir', 'escucha', 'escuchar', 'reproduce', 'dime'])
+  ) {
+    return { tipo: 'buscarVersiculo', texto: t, ambito: 'biblia' };
   }
 
   // Pedir una lección concreta ("lección 3", "lección tres").

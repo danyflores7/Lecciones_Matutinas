@@ -106,6 +106,11 @@ export default function Ajustes() {
           {borrando ? 'Borrando…' : 'Borrar audios descargados'}
         </Text>
       </Pressable>
+
+      <Text style={styles.creditos}>
+        Texto bíblico: Reina-Valera 1909 (dominio público) · Referencias cruzadas:
+        openbible.info (CC-BY)
+      </Text>
     </ScrollView>
   );
 }
@@ -171,5 +176,6 @@ const styles = StyleSheet.create({
     paddingVertical: 13,
   },
   btnSecundarioText: { color: '#A32D2D', fontSize: 16, fontWeight: '600' },
+  creditos: { fontSize: 12, color: '#8A887F', textAlign: 'center', marginTop: 28, lineHeight: 18 },
   pressed: { opacity: 0.85 },
 });

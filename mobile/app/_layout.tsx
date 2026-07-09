@@ -3,6 +3,7 @@ import { Stack } from 'expo-router';
 
 import { sincronizarContenido } from '../lib/contenido';
 import { descargarSemana, limpiarViejo } from '../lib/audio';
+import { descargarDatos } from '../lib/biblia';
 import { prepararAudio } from '../lib/voz';
 
 export default function RootLayout() {
@@ -19,6 +20,8 @@ export default function RootLayout() {
       // Con el contenido listo, baja los audios de la semana y borra lo viejo.
       descargarSemana().catch(() => {});
       limpiarViejo().catch(() => {});
+      // Y los datos de búsqueda (Biblia completa + relacionados), una sola vez.
+      descargarDatos().catch(() => {});
     })();
   }, []);
 
