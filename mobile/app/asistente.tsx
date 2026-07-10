@@ -48,6 +48,7 @@ type Resultados = { titulo: string; items: ItemResultado[]; pie?: string };
 const AYUDA =
   'Puedes decir: matutina de hoy. Lección 3. La pregunta 2 de la lección 3. ' +
   'El versículo central de la lección 2. El título de la lección 3. ' +
+  'El tema de la matutina de hoy. Las notas de la lección 2. ' +
   'Qué lección se parece a la lección 2. ' +
   'Busca el versículo que dice, de tal manera amó Dios al mundo. Dónde se cita Juan 3 16. ' +
   'Versículos relacionados con el versículo central de la lección 2. Preguntas similares. ' +
@@ -466,6 +467,71 @@ export default function Asistente() {
     reproducir([`Lección ${lec.numero}. ${lec.titulo}.`]);
   };
 
+  // "El tema de la matutina de hoy" (solo el tema, sin leer el versículo).
+  const hTemaMatutina = async (fecha: string, g: number) => {
+    let v = await getVersiculoLocal(fecha);
+    if (!v) {
+      try {
+        v = await getVersiculoPorFecha(fecha);
+      } catch {
+        v = null;
+      }
+    }
+    if (!vigente(g)) return;
+    if (!v) {
+      setEstado(`No encontré la matutina del ${fechaDiaMes(fecha)}.`);
+      hablar(`No encontré la matutina del ${fechaDiaMes(fecha)}.`);
+      return;
+    }
+    ultimo.current = { tipo: 'matutina', fecha };
+    ultimaCita.current = v.cita;
+    ultimaPregunta.current = null;
+    setResultados(null);
+    setEstado(`Tema del ${fechaDiaMes(fecha)}: ${v.tema} (${v.cita})`);
+    reproducir([`Matutina del ${fechaDiaMes(fecha)}.`, v.tema]);
+  };
+
+  // "Las notas de la lección 2" (o la nota de una pregunta concreta).
+  const hNotasLeccion = async (
+    leccionNum: number | null,
+    preguntaNum: number | null,
+    g: number
+  ) => {
+    const lec = await resolverLeccion(leccionNum);
+    const datos = lec ? await datosDeLeccion(lec) : null;
+    if (!vigente(g)) return;
+    if (!lec || !datos) {
+      setEstado('No pude cargar la lección. Conéctate a internet una vez.');
+      hablar('No pude cargar la lección. Conéctate a internet una vez.');
+      return;
+    }
+    const conNota = datos.preguntas.filter(
+      (p) => p.nota && (preguntaNum === null || p.orden === preguntaNum)
+    );
+    if (!conNota.length) {
+      const msg =
+        preguntaNum === null
+          ? `La lección ${lec.numero} no tiene notas.`
+          : `La pregunta ${preguntaNum} de la lección ${lec.numero} no tiene nota.`;
+      setEstado(msg);
+      hablar(msg);
+      return;
+    }
+    ultimo.current = { tipo: 'leccion', numero: lec.numero };
+    ultimaLeccionFecha.current = lec.fecha;
+    ultimaPregunta.current = preguntaNum;
+    setResultados(null);
+    setEstado(
+      preguntaNum === null
+        ? `Notas de la lección ${lec.numero} (${conNota.length})`
+        : `Nota de la pregunta ${preguntaNum}, lección ${lec.numero}`
+    );
+    reproducir([
+      `Lección ${lec.numero}. ${lec.titulo}.`,
+      ...conNota.flatMap((p) => [`Pregunta ${p.orden}.`, `Nota. ${p.nota}`]),
+    ]);
+  };
+
   // "¿Qué lección se parece a la lección N?" -> títulos de las más parecidas.
   const hLeccionesSimilares = async (leccionNum: number | null, g: number) => {
     const lec = await resolverLeccion(leccionNum);
@@ -774,6 +840,10 @@ export default function Asistente() {
         return hVersiculoCentral(c.leccion, g);
       case 'tituloLeccion':
         return hTituloLeccion(c.leccion, g);
+      case 'temaMatutina':
+        return hTemaMatutina(c.fecha, g);
+      case 'notasLeccion':
+        return hNotasLeccion(c.leccion, c.pregunta, g);
       case 'leccionesSimilares':
         return hLeccionesSimilares(c.leccion, g);
       case 'buscarVersiculo':

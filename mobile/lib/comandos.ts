@@ -19,6 +19,8 @@ export type Comando =
   | { tipo: 'abrirPregunta'; leccion: number | null; pregunta: number }
   | { tipo: 'versiculoCentral'; leccion: number | null } // solo el central
   | { tipo: 'tituloLeccion'; leccion: number | null } // solo el título
+  | { tipo: 'temaMatutina'; fecha: string } // solo el tema de la matutina
+  | { tipo: 'notasLeccion'; leccion: number | null; pregunta: number | null } // las notas
   | { tipo: 'leccionesSimilares'; leccion: number | null } // lecciones parecidas
   | { tipo: 'abrirMatutina'; fecha: string } // 'YYYY-MM-DD'
   | { tipo: 'buscarVersiculo'; texto: string; ambito: 'biblia' | 'lecciones' }
@@ -149,9 +151,26 @@ export function interpretar(textoOriginal: string): Comando {
     return { tipo: 'versiculoCentral', leccion: numLeccion ? Number(numLeccion[1]) : null };
   }
 
-  // "dime el título de la lección 3".
-  if (t.includes('titulo')) {
+  // Título/tema: de la MATUTINA ("el tema de la matutina de hoy", "el tema del
+  // 15 de julio") o de la LECCIÓN ("el título de la lección 3").
+  const pideTitulo = t.includes('titulo') || t.includes('tema');
+  if (pideTitulo && contiene(t, ['matutina', 'devocional'])) {
+    return { tipo: 'temaMatutina', fecha: fechaDeTexto(t) ?? fechaHoyISO() };
+  }
+  if (pideTitulo && t.includes('tema') && !t.includes('leccion')) {
+    return { tipo: 'temaMatutina', fecha: fechaDeTexto(t) ?? fechaHoyISO() };
+  }
+  if (pideTitulo) {
     return { tipo: 'tituloLeccion', leccion: numLeccion ? Number(numLeccion[1]) : null };
+  }
+
+  // "las notas de la lección 2" / "la nota de la pregunta 3".
+  if (/\bnotas?\b/.test(t)) {
+    return {
+      tipo: 'notasLeccion',
+      leccion: numLeccion ? Number(numLeccion[1]) : null,
+      pregunta: numPregunta ? Number(numPregunta[1]) : null,
+    };
   }
 
   // "la pregunta 3 de la lección 2" / "léeme la pregunta uno".

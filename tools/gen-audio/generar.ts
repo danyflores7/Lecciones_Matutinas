@@ -46,7 +46,7 @@ function sha1(texto: string): string {
 async function main() {
   console.log('Descargando contenido…');
   const [versiculos, lecciones, preguntas, citasRows] = await Promise.all([
-    tabla('versiculos_dia?select=fecha,cita,texto&limit=2000'),
+    tabla('versiculos_dia?select=fecha,cita,texto,tema&limit=2000'),
     tabla('lecciones?select=id,numero,fecha,titulo,versiculo_central_cita,versiculo_central_texto,introduccion&limit=2000'),
     tabla('lecciones_preguntas?select=leccion_id,orden,pregunta,citas,nota&limit=2000'),
     tabla('citas_texto?select=cita,texto&limit=2000'),
@@ -85,9 +85,14 @@ async function main() {
   for (const l of lecciones) {
     add([`Lección ${(l as any).numero}. ${(l as any).titulo}.`]);
   }
+  // Temas de las matutinas (para "el tema de la matutina de hoy").
+  for (const v of versiculos) {
+    if ((v as any).tema) add([(v as any).tema]);
+  }
   add([
     'Puedes decir: matutina de hoy. Lección 3. La pregunta 2 de la lección 3. ' +
       'El versículo central de la lección 2. El título de la lección 3. ' +
+      'El tema de la matutina de hoy. Las notas de la lección 2. ' +
       'Qué lección se parece a la lección 2. ' +
       'Busca el versículo que dice, de tal manera amó Dios al mundo. Dónde se cita Juan 3 16. ' +
       'Versículos relacionados con el versículo central de la lección 2. Preguntas similares. ' +
