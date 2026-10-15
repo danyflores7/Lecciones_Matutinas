@@ -1211,7 +1211,7 @@ const styles = StyleSheet.create({
   sugerenciasTitulo: { fontSize: 14, fontWeight: '600', color: '#5F5E5A', marginBottom: 8 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: {
-    minHeight: 44,
+    minHeight: 48,
     justifyContent: 'center',
     paddingHorizontal: 14,
     borderRadius: 999,

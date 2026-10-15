@@ -271,7 +271,7 @@ const styles = StyleSheet.create({
     paddingLeft: 12,
   },
   input: { flex: 1, fontSize: 16, color: '#2C2C2A', paddingVertical: 10 },
-  limpiar: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  limpiar: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
   btnBuscar: {
     minHeight: 50,
     justifyContent: 'center',
@@ -283,7 +283,7 @@ const styles = StyleSheet.create({
   ambitos: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, marginTop: 10 },
   ambito: {
     flex: 1,
-    minHeight: 44,
+    minHeight: 48,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 999,
@@ -300,7 +300,7 @@ const styles = StyleSheet.create({
   ayudaTexto: { fontSize: 15, lineHeight: 22, color: '#5F5E5A' },
   ejemplos: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14 },
   ejemplo: {
-    minHeight: 44,
+    minHeight: 48,
     justifyContent: 'center',
     paddingHorizontal: 14,
     borderRadius: 999,
