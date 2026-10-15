@@ -321,7 +321,11 @@ export default function Inicio() {
           Platform.OS === 'ios' ? (
             <View style={styles.pickerIOS}>
               <DateTimePicker value={horaDate} mode="time" display="spinner" onChange={onChangeHora} />
-              <Pressable style={styles.listoBtn} onPress={() => setShowPicker(false)}>
+              <Pressable
+                style={styles.listoBtn}
+                onPress={() => setShowPicker(false)}
+                accessibilityRole="button"
+              >
                 <Text style={styles.listoText}>Listo</Text>
               </Pressable>
             </View>

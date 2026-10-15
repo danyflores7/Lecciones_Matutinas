@@ -182,6 +182,7 @@ export default function LeccionDetalle() {
           <Pressable
             style={({ pressed }) => [styles.btnAudio, pressed && styles.btnLeccionPressed]}
             onPress={togglePausa}
+            accessibilityRole="button"
           >
             <Ionicons name={pausado ? 'play' : 'pause'} size={20} color="#FFFFFF" />
             <Text style={styles.btnLeccionText}>{pausado ? 'Continuar' : 'Pausar'}</Text>
@@ -189,6 +190,7 @@ export default function LeccionDetalle() {
           <Pressable
             style={({ pressed }) => [styles.btnAudioStop, pressed && styles.btnLeccionPressed]}
             onPress={detenerAudio}
+            accessibilityRole="button"
           >
             <Ionicons name="stop" size={20} color="#185FA5" />
             <Text style={styles.btnAudioStopText}>Detener</Text>
