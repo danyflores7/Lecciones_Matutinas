@@ -134,6 +134,8 @@ export function citaHablada(fraseNormalizada: string): string | null {
       .replace(/\b(primera|primero|primer)\s+(de\s+)?/g, '1 ')
       .replace(/\b(segunda|segundo)\s+(de\s+)?/g, '2 ')
       .replace(/\b(tercera|tercero)\s+(de\s+)?/g, '3 ')
+      .replace(/\bsalmo\b/g, 'salmos') // "el salmo 23"
+      .replace(/\bcantar de los cantares\b/g, 'cantares')
       .replace(/\bcapitulo\b/g, ' ')
       .replace(/\bvers(?:iculos?|os?)\b/g, ' ')
       .replace(/[:,]/g, ' ')

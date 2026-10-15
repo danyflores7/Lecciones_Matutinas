@@ -16,11 +16,22 @@ export function fechaHoyISO(): string {
   return `${d.getFullYear()}-${mm}-${dd}`;
 }
 
-// 'Martes 16 de junio'
+// Primera letra en mayúscula y lo demás igual: 'jueves' -> 'Jueves'.
+export function capitalizar(s: string): string {
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+}
+
+// 'Martes 16 de junio' (solo el día de la semana con mayúscula).
 export function fechaLarga(fechaISO: string, diaSemana: string): string {
   const dia = Number(fechaISO.slice(8, 10));
   const mes = MESES[Number(fechaISO.slice(5, 7)) - 1];
-  return `${diaSemana} ${dia} de ${mes}`;
+  return `${capitalizar(diaSemana.toLowerCase())} ${dia} de ${mes}`;
+}
+
+// Día de la semana de una fecha ISO: 'jueves'.
+export function diaSemanaDe(fechaISO: string): string {
+  const dias = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+  return dias[new Date(`${fechaISO}T00:00:00`).getDay()];
 }
 
 // ISO de hoy desplazado N días (p. ej. -1 = ayer). Útil para la racha.
@@ -45,9 +56,9 @@ export function fechaDiaMes(fechaISO: string): string {
   return `${diaDelMes(fechaISO)} de ${MESES[Number(fechaISO.slice(5, 7)) - 1]}`;
 }
 
-// '6:00 a.m.'
+// '6:00 a. m.'
 export function horaTexto(hour: number, minute: number): string {
-  const ampm = hour < 12 ? 'a.m.' : 'p.m.';
+  const ampm = hour < 12 ? 'a. m.' : 'p. m.';
   const h12 = hour % 12 === 0 ? 12 : hour % 12;
   return `${h12}:${String(minute).padStart(2, '0')} ${ampm}`;
 }

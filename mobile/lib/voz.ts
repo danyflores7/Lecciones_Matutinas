@@ -1,3 +1,4 @@
+import { useSyncExternalStore } from 'react';
 import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from 'expo-audio';
 import * as Speech from 'expo-speech';
 
@@ -16,12 +17,42 @@ export async function prepararAudio(): Promise<void> {
   }
 }
 
-type Estado = { partes: string[]; idx: number; rate: number; onFin?: () => void };
+type Estado = {
+  partes: string[];
+  orig: number[]; // índice de cada parte en la lista original (antes de filtrar vacías)
+  idx: number;
+  rate: number;
+  onFin?: () => void;
+  onParte?: (indice: number) => void;
+};
 
 // token: invalida secuencias anteriores (al detener, pausar o iniciar otra).
 let token = 0;
 let estado: Estado | null = null;
 let player: AudioPlayer | null = null;
+
+// Estado visible de la lectura, para que las pantallas muestren "Preparando
+// audio…" mientras se descarga el primer clip, y el botón correcto.
+export type EstadoVoz = 'inactivo' | 'preparando' | 'hablando' | 'pausado';
+let estadoVoz: EstadoVoz = 'inactivo';
+const oyentes = new Set<() => void>();
+
+function setEstadoVoz(e: EstadoVoz) {
+  if (e === estadoVoz) return;
+  estadoVoz = e;
+  oyentes.forEach((f) => f());
+}
+
+function suscribirVoz(f: () => void) {
+  oyentes.add(f);
+  return () => {
+    oyentes.delete(f);
+  };
+}
+
+export function useEstadoVoz(): EstadoVoz {
+  return useSyncExternalStore(suscribirVoz, () => estadoVoz);
+}
 
 function liberarPlayer() {
   if (player) {
@@ -35,6 +66,7 @@ function liberarPlayer() {
 }
 
 function hablarTTS(mi: number, texto: string) {
+  setEstadoVoz('hablando');
   Speech.speak(texto, {
     language: 'es-MX',
     rate: estado?.rate ?? 1.0,
@@ -58,10 +90,12 @@ async function decir(mi: number) {
   if (estado.idx >= estado.partes.length) {
     const fin = estado.onFin;
     estado = null;
+    setEstadoVoz('inactivo');
     fin?.();
     return;
   }
   const texto = estado.partes[estado.idx];
+  estado.onParte?.(estado.orig[estado.idx]);
 
   // Voz neural: usa el mp3 local o lo descarga AL MOMENTO si hay internet
   // (clips de ~35 KB). Solo si no se puede, cae a la voz del sistema.
@@ -89,6 +123,7 @@ async function decir(mi: number) {
     let avanzado = false;
     const sub = p.addListener('playbackStatusUpdate', (st) => {
       if (mi !== token) return;
+      if (st.playing) setEstadoVoz('hablando');
       if (st.didJustFinish && !avanzado) {
         avanzado = true;
         sub.remove();
@@ -129,19 +164,32 @@ async function decir(mi: number) {
 
 // Reproduce una lista de segmentos uno tras otro (evita un audio muy largo que
 // en algunos dispositivos falla). `onFin` se llama al terminar todos.
+// `onParte(i)` avisa qué parte (índice en `partes`) empieza a sonar.
 export function reproducirPartes(
   partes: string[],
-  opts: { rate?: number; onFin?: () => void } = {}
+  opts: { rate?: number; onFin?: () => void; onParte?: (indice: number) => void; desde?: number } = {}
 ): void {
   token += 1;
   Speech.stop();
   liberarPlayer();
+  const limpias: string[] = [];
+  const orig: number[] = [];
+  partes.forEach((p, i) => {
+    const t = (p ?? '').trim();
+    if (t && i >= (opts.desde ?? 0)) {
+      limpias.push(t);
+      orig.push(i);
+    }
+  });
   estado = {
-    partes: partes.map((p) => (p ?? '').trim()).filter(Boolean),
+    partes: limpias,
+    orig,
     idx: 0,
     rate: opts.rate ?? 1.0,
     onFin: opts.onFin,
+    onParte: opts.onParte,
   };
+  setEstadoVoz('preparando');
   decir(token);
 }
 
@@ -149,6 +197,7 @@ export function reproducirPartes(
 // vuelve a leer ese segmento desde el inicio).
 export function pausar(): void {
   token += 1;
+  if (estado) setEstadoVoz('pausado');
   Speech.stop();
   try {
     player?.pause();
@@ -163,6 +212,7 @@ export function continuar(): boolean {
   token += 1;
   Speech.stop();
   liberarPlayer();
+  setEstadoVoz('preparando');
   decir(token);
   return true;
 }
@@ -170,6 +220,7 @@ export function continuar(): boolean {
 export function detenerVoz(): void {
   token += 1;
   estado = null;
+  setEstadoVoz('inactivo');
   Speech.stop();
   liberarPlayer();
 }

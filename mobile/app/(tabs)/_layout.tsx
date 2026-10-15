@@ -1,52 +1,73 @@
-import { Tabs, useRouter } from 'expo-router';
+import { Tabs, usePathname, useRouter } from 'expo-router';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 export default function TabsLayout() {
   const router = useRouter();
+  const ruta = usePathname();
+  // En Inicio ya está el botón grande "Modo por voz": ahí no se muestra el
+  // flotante (además taparía los botones de la matutina).
+  const mostrarFab = ruta !== '/';
   return (
     <View style={styles.raiz}>
       <Tabs
         screenOptions={{
           headerShown: false,
           tabBarActiveTintColor: '#185FA5',
-          tabBarInactiveTintColor: '#888780',
-          tabBarStyle: { backgroundColor: '#FFFFFF', borderTopColor: '#E5E3DB' },
+          tabBarInactiveTintColor: '#5F5E5A',
+          tabBarStyle: { backgroundColor: '#FFFFFF', borderTopColor: '#C9C7BE' },
         }}
       >
         <Tabs.Screen
           name="index"
           options={{
             title: 'Inicio',
-            tabBarIcon: ({ color, size }) => <Ionicons name="home-outline" color={color} size={size} />,
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="home-outline" color={color} size={size} />
+            ),
           }}
         />
         <Tabs.Screen
           name="estudio"
           options={{
             title: 'Estudio',
-            tabBarIcon: ({ color, size }) => <Ionicons name="book-outline" color={color} size={size} />,
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="book-outline" color={color} size={size} />
+            ),
           }}
         />
         <Tabs.Screen
           name="calendario"
           options={{
             title: 'Calendario',
-            tabBarIcon: ({ color, size }) => <Ionicons name="calendar-outline" color={color} size={size} />,
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="calendar-outline" color={color} size={size} />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="buscar"
+          options={{
+            title: 'Buscar',
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="search-outline" color={color} size={size} />
+            ),
           }}
         />
       </Tabs>
 
-      {/* Botón flotante del Modo por voz: accesible desde cualquier pestaña. */}
-      <Pressable
-        onPress={() => router.navigate('/asistente')}
-        accessibilityRole="button"
-        accessibilityLabel="Abrir el modo por voz"
-        accessibilityHint="Habla para navegar y escuchar el contenido"
-        style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}
-      >
-        <Ionicons name="mic" size={30} color="#FFFFFF" />
-      </Pressable>
+      {/* Botón flotante del Modo por voz: en las demás pestañas. */}
+      {mostrarFab ? (
+        <Pressable
+          onPress={() => router.navigate('/asistente')}
+          accessibilityRole="button"
+          accessibilityLabel="Abrir el modo por voz"
+          accessibilityHint="Habla para navegar y escuchar el contenido"
+          style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}
+        >
+          <Ionicons name="mic" size={30} color="#FFFFFF" />
+        </Pressable>
+      ) : null}
     </View>
   );
 }

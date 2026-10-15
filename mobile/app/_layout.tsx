@@ -16,7 +16,7 @@ export default function RootLayout() {
   const micHeader = () => (
     <Pressable
       onPress={() => router.navigate('/asistente')}
-      hitSlop={10}
+      style={{ width: 48, height: 48, alignItems: 'center', justifyContent: 'center' }}
       accessibilityRole="button"
       accessibilityLabel="Abrir el modo por voz"
     >
@@ -65,6 +65,15 @@ export default function RootLayout() {
         name="ajustes"
         options={{ title: 'Ajustes', headerBackTitle: 'Atrás', headerRight: micHeader }}
       />
+      <Stack.Screen
+        name="matutina"
+        options={{ title: 'Matutina', headerBackTitle: 'Atrás', headerRight: micHeader }}
+      />
+      <Stack.Screen
+        name="estudiar"
+        options={{ title: 'Estudiar', headerBackTitle: 'Atrás', headerRight: micHeader }}
+      />
+      <Stack.Screen name="bienvenida" options={{ title: 'Bienvenida', headerBackTitle: 'Atrás' }} />
       <Stack.Screen name="asistente" options={{ title: 'Modo por voz', headerBackTitle: 'Atrás' }} />
     </Stack>
   );

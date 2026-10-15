@@ -26,10 +26,11 @@ export function citaParaVoz(cita: string): string {
   });
 }
 
-// Matutina: se anuncia la cita y luego el texto.
-export function segmentosMatutina(v: Pick<VersiculoDia, 'cita' | 'texto'>): string[] {
+// Matutina: se anuncia la cita, luego el texto y, si la hay, la nota del día.
+export function segmentosMatutina(v: Pick<VersiculoDia, 'cita' | 'texto' | 'nota'>): string[] {
   const segs: string[] = [`${citaParaVoz(v.cita)}.`];
   if (v.texto) segs.push(v.texto);
+  if (v.nota) segs.push(`Nota. ${v.nota}`);
   return segs;
 }
 

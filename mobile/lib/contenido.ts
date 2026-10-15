@@ -41,21 +41,40 @@ async function leerJSON<T>(clave: string): Promise<T | null> {
   }
 }
 
-// Carga el store desde disco a memoria (una sola vez). Devuelve null si nunca
-// se ha sincronizado.
+type Incluido = Store & { version: number; generado: string };
+
+// Copia del contenido que viaja DENTRO de la app (tools/datos/snapshot_contenido.ts).
+// Se usa en el primer arranque sin internet, o si la base de datos está
+// pausada, y cuando es más nueva que la última sincronización guardada.
+function contenidoIncluido(): Incluido {
+  return require('../assets/contenido.json') as Incluido;
+}
+
+// Carga el store a memoria (una sola vez): lo sincronizado en disco o, si no
+// hay nada (o es más viejo), la copia incluida en la app. Nunca queda vacío.
 export async function cargarStore(): Promise<Store | null> {
   if (store) return store;
   if (cargando) return cargando;
   cargando = (async () => {
-    const [versiculos, lecciones, preguntas, citas] = await Promise.all([
+    const [versiculos, lecciones, preguntas, citas, meta] = await Promise.all([
       leerJSON<VersiculoDia[]>(K.versiculos),
       leerJSON<Leccion[]>(K.lecciones),
       leerJSON<Pregunta[]>(K.preguntas),
       leerJSON<Record<string, string>>(K.citas),
+      leerJSON<{ sincronizado?: string }>(K.meta),
     ]);
-    if (versiculos && lecciones && preguntas && citas) {
-      store = { versiculos, lecciones, preguntas, citas };
-    }
+    const incluido = contenidoIncluido();
+    const guardadoVigente =
+      versiculos && lecciones && preguntas && citas &&
+      (meta?.sincronizado ?? '') >= incluido.generado;
+    store = guardadoVigente
+      ? { versiculos, lecciones, preguntas, citas }
+      : {
+          versiculos: incluido.versiculos,
+          lecciones: incluido.lecciones,
+          preguntas: incluido.preguntas,
+          citas: incluido.citas,
+        };
     cargando = null;
     return store;
   })();

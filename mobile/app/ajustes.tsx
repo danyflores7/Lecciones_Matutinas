@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import * as Network from 'expo-network';
 
 import {
   borrarAudios,
+  cancelarDescarga,
   descargarTodo,
   esModoCompleto,
   estadoDescargaActual,
@@ -17,11 +20,17 @@ function mb(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+// Confirmación en línea (sin ventana emergente): qué se va a confirmar.
+type Confirmar = null | 'borrar' | 'datosMoviles';
+
 export default function Ajustes() {
+  const router = useRouter();
   const [ocupado, setOcupado] = useState<number | null>(null);
   const [completo, setCompleto] = useState(false);
   const [estado, setEstado] = useState<EstadoDescarga>(estadoDescargaActual());
   const [borrando, setBorrando] = useState(false);
+  const [confirmar, setConfirmar] = useState<Confirmar>(null);
+  const [aviso, setAviso] = useState<string | null>(null);
 
   const refrescar = async () => {
     setOcupado(await tamanoOcupado());
@@ -39,7 +48,34 @@ export default function Ajustes() {
     return cancelar;
   }, []);
 
+  const iniciarDescarga = () => {
+    setConfirmar(null);
+    setAviso(null);
+    descargarTodo().catch(() => setAviso('La descarga se interrumpió. Puedes reanudarla.'));
+  };
+
+  // Antes de bajar ~112 MB revisa la red: sin internet avisa, y con datos
+  // móviles pide confirmación.
+  const onDescargar = async () => {
+    setAviso(null);
+    try {
+      const red = await Network.getNetworkStateAsync();
+      if (!red.isConnected || red.isInternetReachable === false) {
+        setAviso('No hay conexión a internet. Conéctate y vuelve a intentarlo.');
+        return;
+      }
+      if (red.type === Network.NetworkStateType.CELLULAR) {
+        setConfirmar('datosMoviles');
+        return;
+      }
+    } catch {
+      // Si no se puede saber la red, se intenta igual.
+    }
+    iniciarDescarga();
+  };
+
   const onBorrar = async () => {
+    setConfirmar(null);
     setBorrando(true);
     try {
       await borrarAudios();
@@ -47,24 +83,27 @@ export default function Ajustes() {
       // ignorar
     }
     setBorrando(false);
+    setAviso('Audios borrados. La app volverá a bajar sola los de esta semana.');
     refrescar();
   };
 
   const pct = estado.total ? Math.round((estado.hecho / estado.total) * 100) : 0;
   const yaCompleto = completo || estado.completo;
   const esc = useEscalaTexto();
+  const sinAudios = ocupado === 0;
+  const borrarDeshabilitado = borrando || estado.activa || sinAudios;
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-      <Text style={styles.seccion}>Tamaño de letra</Text>
+      <Text style={styles.seccion} accessibilityRole="header">Tamaño de letra</Text>
       <View style={styles.tamanos}>
         {TAMANOS.map((t) => (
           <Pressable
             key={t.v}
             onPress={() => setEscala(t.v)}
-            accessibilityRole="button"
+            accessibilityRole="radio"
             accessibilityLabel={`Letra ${t.l}`}
-            accessibilityState={{ selected: esc === t.v }}
+            accessibilityState={{ checked: esc === t.v }}
             style={({ pressed }) => [
               styles.tamanoBtn,
               esc === t.v && styles.tamanoBtnActivo,
@@ -84,13 +123,13 @@ export default function Ajustes() {
         <Text style={styles.muestraNota}>Así se verán los versículos y las lecciones.</Text>
       </View>
 
-      <Text style={styles.seccion}>Audio sin conexión</Text>
+      <Text style={styles.seccion} accessibilityRole="header">Audio sin conexión</Text>
       <Text style={styles.desc}>
         La app descarga sola la narración de la semana para escucharla sin internet. Aquí
         puedes bajar todo de una vez o liberar espacio.
       </Text>
 
-      <View style={styles.card}>
+      <View style={styles.card} accessible accessibilityLabel={`Espacio usado por audios: ${ocupado === null ? 'calculando' : mb(ocupado)}`}>
         <Ionicons name="cloud-download-outline" size={22} color="#185FA5" />
         <Text style={styles.cardTexto}>
           Espacio usado: {ocupado === null ? '…' : mb(ocupado)}
@@ -99,24 +138,66 @@ export default function Ajustes() {
 
       {estado.activa ? (
         <View style={styles.progresoCard}>
-          <View style={styles.barraBg}>
+          <View
+            style={styles.barraBg}
+            accessible
+            accessibilityRole="progressbar"
+            accessibilityLabel="Descarga del audio"
+            accessibilityValue={{ min: 0, max: 100, now: pct }}
+          >
             <View style={[styles.barra, { width: `${pct}%` }]} />
           </View>
-          <Text style={styles.progresoTexto}>
-            Descargando… {pct}% ({estado.hecho}/{estado.total})
+          <Text style={styles.progresoTexto} accessibilityLiveRegion="polite">
+            Descargando… {pct}% ({estado.hecho} de {estado.total})
           </Text>
-          <Text style={styles.nota}>Puedes seguir usando la app; la descarga continúa sola.</Text>
+          <Text style={styles.notaIzq}>Puedes seguir usando la app; la descarga continúa sola.</Text>
+          <Pressable
+            style={({ pressed }) => [styles.btnSecundarioAzul, pressed && styles.pressed]}
+            onPress={() => {
+              cancelarDescarga();
+              setAviso('Descarga detenida. Lo que ya bajó se conserva; puedes reanudarla después.');
+            }}
+            accessibilityRole="button"
+          >
+            <Ionicons name="close-circle-outline" size={20} color="#185FA5" />
+            <Text style={styles.btnSecundarioAzulText}>Cancelar descarga</Text>
+          </Pressable>
         </View>
       ) : yaCompleto ? (
         <View style={styles.completoCard}>
           <Ionicons name="checkmark-circle" size={24} color="#1B7A3D" />
           <Text style={styles.completoTexto}>Audio completo descargado</Text>
         </View>
+      ) : confirmar === 'datosMoviles' ? (
+        <View style={styles.confirmCard} accessibilityLiveRegion="polite">
+          <Text style={styles.confirmTitulo}>Estás usando datos móviles</Text>
+          <Text style={styles.confirmTexto}>
+            La descarga completa ocupa unos 112 MB de tu plan de datos. ¿Descargar de todos modos?
+          </Text>
+          <View style={styles.confirmFila}>
+            <Pressable
+              style={({ pressed }) => [styles.btnSecundarioAzul, styles.flex, pressed && styles.pressed]}
+              onPress={() => setConfirmar(null)}
+              accessibilityRole="button"
+            >
+              <Text style={styles.btnSecundarioAzulText}>Esperar a Wi-Fi</Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [styles.btnPrimario, styles.flex, pressed && styles.pressed]}
+              onPress={iniciarDescarga}
+              accessibilityRole="button"
+            >
+              <Text style={styles.btnPrimarioText}>Descargar</Text>
+            </Pressable>
+          </View>
+        </View>
       ) : (
         <>
           <Pressable
             style={({ pressed }) => [styles.btnPrimario, pressed && styles.pressed]}
-            onPress={() => descargarTodo()}
+            onPress={onDescargar}
+            accessibilityRole="button"
+            accessibilityHint="Unos 112 megabytes. Recomendado con Wi-Fi."
           >
             <Ionicons name="download-outline" size={20} color="#FFFFFF" />
             <Text style={styles.btnPrimarioText}>Descargar todo el audio</Text>
@@ -127,15 +208,66 @@ export default function Ajustes() {
         </>
       )}
 
-      <Pressable
-        style={({ pressed }) => [styles.btnSecundario, (borrando || pressed) && styles.pressed]}
-        onPress={onBorrar}
-        disabled={borrando || estado.activa || ocupado === 0}
-      >
-        <Ionicons name="trash-outline" size={20} color="#A32D2D" />
-        <Text style={styles.btnSecundarioText}>
-          {borrando ? 'Borrando…' : 'Borrar audios descargados'}
+      {confirmar === 'borrar' ? (
+        <View style={styles.confirmCard} accessibilityLiveRegion="polite">
+          <Text style={styles.confirmTitulo}>¿Borrar {ocupado ? mb(ocupado) : 'los audios'}?</Text>
+          <Text style={styles.confirmTexto}>
+            Se quitará la narración guardada en el teléfono. Podrás volver a descargarla cuando
+            quieras.
+          </Text>
+          <View style={styles.confirmFila}>
+            <Pressable
+              style={({ pressed }) => [styles.btnSecundarioAzul, styles.flex, pressed && styles.pressed]}
+              onPress={() => setConfirmar(null)}
+              accessibilityRole="button"
+            >
+              <Text style={styles.btnSecundarioAzulText}>Cancelar</Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [styles.btnPeligro, styles.flex, pressed && styles.pressed]}
+              onPress={onBorrar}
+              accessibilityRole="button"
+            >
+              <Text style={styles.btnPeligroText}>Sí, borrar</Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : (
+        <Pressable
+          style={({ pressed }) => [
+            styles.btnSecundario,
+            borrarDeshabilitado && styles.deshabilitado,
+            pressed && styles.pressed,
+          ]}
+          onPress={() => setConfirmar('borrar')}
+          disabled={borrarDeshabilitado}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: borrarDeshabilitado }}
+          accessibilityHint={sinAudios ? 'No hay audios descargados' : undefined}
+        >
+          <Ionicons name="trash-outline" size={20} color="#A32D2D" />
+          <Text style={styles.btnSecundarioText}>
+            {borrando ? 'Borrando…' : sinAudios ? 'No hay audios que borrar' : 'Borrar audios descargados'}
+          </Text>
+        </Pressable>
+      )}
+
+      {aviso ? (
+        <Text style={styles.aviso} accessibilityLiveRegion="polite">
+          {aviso}
         </Text>
+      ) : null}
+
+      <Text style={[styles.seccion, styles.seccionSep]} accessibilityRole="header">Ayuda</Text>
+      <Pressable
+        style={({ pressed }) => [styles.filaAyuda, pressed && styles.pressed]}
+        onPress={() => router.push('/bienvenida')}
+        accessibilityRole="button"
+        accessibilityLabel="Cómo se usa la app"
+      >
+        <Ionicons name="help-circle-outline" size={22} color="#185FA5" />
+        <Text style={styles.filaAyudaText}>¿Cómo se usa?</Text>
+        <Ionicons name="chevron-forward" size={18} color="#6E6C66" />
       </Pressable>
 
       <Text style={styles.creditos}>
@@ -158,18 +290,20 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     marginTop: 8,
   },
+  seccionSep: { marginTop: 30 },
   tamanos: { flexDirection: 'row', gap: 8 },
   tamanoBtn: {
     flex: 1,
-    paddingVertical: 10,
+    minHeight: 48,
+    justifyContent: 'center',
     borderRadius: 12,
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#E5E3DB',
+    borderColor: '#6E6C66',
     alignItems: 'center',
   },
   tamanoBtnActivo: { backgroundColor: '#185FA5', borderColor: '#185FA5' },
-  tamanoText: { fontSize: 13, fontWeight: '600', color: '#5F5E5A' },
+  tamanoText: { fontSize: 13, fontWeight: '600', color: '#3D3C39' },
   tamanoTextActivo: { color: '#FFFFFF' },
   muestraCard: {
     backgroundColor: '#FFFFFF',
@@ -178,8 +312,8 @@ const styles = StyleSheet.create({
     marginTop: 10,
     marginBottom: 24,
   },
-  muestraTexto: { fontSize: 18, lineHeight: 28, color: '#042C53', fontFamily: 'serif', fontStyle: 'italic' },
-  muestraNota: { fontSize: 12, color: '#8A887F', marginTop: 8 },
+  muestraTexto: { fontSize: 18, lineHeight: 28, color: '#042C53', fontFamily: 'serif' },
+  muestraNota: { fontSize: 12, color: '#5F5E5A', marginTop: 8 },
   desc: { fontSize: 15, lineHeight: 22, color: '#5F5E5A', marginBottom: 18 },
   card: {
     flexDirection: 'row',
@@ -215,29 +349,81 @@ const styles = StyleSheet.create({
     marginBottom: 22,
   },
   completoTexto: { fontSize: 16, fontWeight: '600', color: '#1B7A3D' },
+  confirmCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 18,
+    marginBottom: 22,
+    borderWidth: 1,
+    borderColor: '#6E6C66',
+  },
+  confirmTitulo: { fontSize: 16, fontWeight: '700', color: '#2C2C2A' },
+  confirmTexto: { fontSize: 14, lineHeight: 21, color: '#5F5E5A', marginTop: 6 },
+  confirmFila: { flexDirection: 'row', gap: 10, marginTop: 14 },
+  flex: { flex: 1 },
   btnPrimario: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
+    minHeight: 48,
     backgroundColor: '#185FA5',
     borderRadius: 14,
-    paddingVertical: 14,
+    paddingVertical: 13,
   },
   btnPrimarioText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600' },
+  btnSecundarioAzul: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    minHeight: 48,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#185FA5',
+    borderRadius: 14,
+    paddingVertical: 12,
+    marginTop: 12,
+  },
+  btnSecundarioAzulText: { color: '#185FA5', fontSize: 16, fontWeight: '600' },
+  btnPeligro: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 48,
+    backgroundColor: '#A32D2D',
+    borderRadius: 14,
+    paddingVertical: 12,
+    marginTop: 12,
+  },
+  btnPeligroText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600' },
   nota: { fontSize: 13, color: '#5F5E5A', textAlign: 'center', marginTop: 8, marginBottom: 22 },
+  notaIzq: { fontSize: 13, color: '#5F5E5A', marginTop: 6 },
   btnSecundario: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
+    minHeight: 48,
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#E5B4B4',
+    borderColor: '#B54848',
     borderRadius: 14,
     paddingVertical: 13,
   },
   btnSecundarioText: { color: '#A32D2D', fontSize: 16, fontWeight: '600' },
-  creditos: { fontSize: 12, color: '#8A887F', textAlign: 'center', marginTop: 28, lineHeight: 18 },
+  deshabilitado: { opacity: 0.45, borderStyle: 'dashed' },
+  aviso: { fontSize: 14, color: '#0C447C', textAlign: 'center', marginTop: 14, lineHeight: 20 },
+  filaAyuda: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    minHeight: 52,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    paddingHorizontal: 16,
+  },
+  filaAyudaText: { flex: 1, fontSize: 15, fontWeight: '600', color: '#2C2C2A' },
+  creditos: { fontSize: 12, color: '#5F5E5A', textAlign: 'center', marginTop: 28, lineHeight: 18 },
   pressed: { opacity: 0.85 },
 });

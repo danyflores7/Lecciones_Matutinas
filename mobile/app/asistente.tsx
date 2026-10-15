@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -37,25 +37,39 @@ import {
   segmentosLeccion,
   segmentosMatutina,
 } from '../lib/segmentos';
-import { continuar, detenerVoz, pausar, reproducirPartes } from '../lib/voz';
+import { continuar, detenerVoz, pausar, reproducirPartes, useEstadoVoz } from '../lib/voz';
 import { getVelocidad } from '../lib/almacen';
 import { conEscala, useEscalaTexto } from '../lib/escala';
 import { fechaDiaMes, fechaHoyISO, sumarDias } from '../lib/fechas';
+import { F } from '../lib/frases';
 
 type Ultimo = { tipo: 'matutina'; fecha: string } | { tipo: 'leccion'; numero: number } | null;
 type ItemResultado = { etiqueta: string; sub?: string; partes: string[] };
 type Resultados = { titulo: string; items: ItemResultado[]; pie?: string };
+type Permiso = 'ok' | 'pedir' | 'bloqueado' | null;
 
-const AYUDA =
-  'Puedes decir: matutina de hoy. Lección 3. La pregunta 2 de la lección 3. ' +
-  'El versículo central de la lección 2. El título de la lección 3. ' +
-  'El tema de la matutina de hoy. Las notas de la lección 2. ' +
-  'Qué lección se parece a la lección 2. ' +
-  'Busca el versículo que dice, de tal manera amó Dios al mundo. Dónde se cita Juan 3 16. ' +
-  'Versículos relacionados con el versículo central de la lección 2. Preguntas similares. ' +
-  'Siguiente. Anterior. Pausar.';
-
-const BIENVENIDA = 'Te escucho. Di lo que quieres escuchar, o di ayuda.';
+// Errores del reconocedor de voz (vienen en inglés) en palabras simples.
+function errorDeMicrofono(codigo?: string): string | null {
+  switch (codigo) {
+    case 'aborted':
+      return null; // lo cancelamos nosotros (cambio de pantalla, etc.)
+    case 'not-allowed':
+      return 'No tengo permiso para usar el micrófono. Actívalo en los ajustes del teléfono.';
+    case 'audio-capture':
+      return 'No pude usar el micrófono. Revisa que otra app no lo esté usando y vuelve a tocarlo.';
+    case 'network':
+      return 'Para entender tu voz, este teléfono necesita internet. Revisa tu conexión y vuelve a intentar.';
+    case 'service-not-allowed':
+    case 'language-not-supported':
+      return 'Este teléfono no tiene el reconocimiento de voz en español. Instala o actualiza la app de Google.';
+    case 'busy':
+      return 'El micrófono está ocupado. Espera un momento y vuelve a tocarlo.';
+    case 'interrupted':
+      return 'Se interrumpió la escucha. Toca el micrófono para intentar de nuevo.';
+    default:
+      return 'No pude escucharte. Toca el micrófono para intentar de nuevo.';
+  }
+}
 
 // OJO: sin androidIntentOptions de silencio. En los Pixel, el reconocedor de
 // Google deja de entregar el resultado final cuando se le pasan esos extras
@@ -71,7 +85,9 @@ export default function Asistente() {
   const router = useRouter();
   const [escuchando, setEscuchando] = useState(false);
   const [texto, setTexto] = useState('');
-  const [estado, setEstado] = useState('Toca el micrófono y di lo que quieres escuchar.');
+  const [estado, setEstado] = useState('');
+  const [permiso, setPermiso] = useState<Permiso>(null);
+  const estadoVoz = useEstadoVoz();
   const [resultados, setResultados] = useState<Resultados | null>(null);
   const esc = useEscalaTexto();
   const velocidad = useRef(1.0);
@@ -112,7 +128,6 @@ export default function Asistente() {
     setTexto('');
     interimRef.current = '';
     finalRecibido.current = false;
-    setEstado('Escuchando…');
     try {
       ExpoSpeechRecognitionModule.start(OPCIONES_ESCUCHA);
     } catch {
@@ -124,12 +139,14 @@ export default function Asistente() {
     (async () => {
       velocidad.current = await getVelocidad();
       // Manos libres desde que se abre la pantalla: saluda y queda escuchando.
-      const permiso = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
-      if (permiso.granted) {
+      // Si aún no hay permiso, primero se explica para qué es (no se pide en frío).
+      const actual = await ExpoSpeechRecognitionModule.getPermissionsAsync();
+      if (actual.granted) {
         permisoOk.current = true;
-        hablar(BIENVENIDA);
+        setPermiso('ok');
+        hablar(F.bienvenida);
       } else {
-        setEstado('Necesito permiso para usar el micrófono. Actívalo en los ajustes del teléfono.');
+        setPermiso(actual.canAskAgain ? 'pedir' : 'bloqueado');
       }
     })();
     return () => {
@@ -194,7 +211,8 @@ export default function Asistente() {
       }
       return;
     }
-    setEstado(`No pude escuchar (${e.error ?? 'error'}). Intenta de nuevo.`);
+    const msg = errorDeMicrofono(e.error);
+    if (msg) setEstado(msg);
   });
   useSpeechRecognitionEvent('result', (e) => {
     if (!enfocado.current) return; // otra pantalla (u otra instancia) al frente
@@ -234,13 +252,51 @@ export default function Asistente() {
     // si algo está sonando, se detiene para escuchar al usuario.
     if (!pausado.current) detenerVoz();
     sinVoz.current = 0;
-    const permiso = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
-    if (!permiso.granted) {
-      setEstado('Necesito permiso para usar el micrófono. Actívalo en los ajustes del teléfono.');
+    const res = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+    if (!res.granted) {
+      setPermiso(res.canAskAgain ? 'pedir' : 'bloqueado');
       return;
     }
+    const primeraVez = !permisoOk.current;
     permisoOk.current = true;
-    escucharAuto();
+    setPermiso('ok');
+    if (primeraVez) hablar(F.bienvenida);
+    else escucharAuto();
+  };
+
+  // Una sugerencia tocada funciona igual que si se hubiera dicho.
+  const usarSugerencia = (frase: string) => {
+    cerrarMic();
+    sinVoz.current = 0;
+    setTexto(frase);
+    manejar(frase);
+  };
+
+  // Sugerencias según lo último que se pidió (la "siguiente acción" probable).
+  const sugerencias = (): string[] => {
+    if (pausado.current) return ['Continúa', 'Detente'];
+    if (resultados?.items.length) return ['Siguiente', 'Anterior', 'Repite'];
+    const u = ultimo.current;
+    if (u?.tipo === 'matutina') {
+      return [
+        `La nota de la matutina del ${fechaDiaMes(u.fecha)}`,
+        'La siguiente',
+        'Versículos relacionados',
+        'Dónde se cita',
+      ];
+    }
+    if (u?.tipo === 'leccion' && ultimaPregunta.current !== null) {
+      return [
+        'La siguiente',
+        'La anterior',
+        `La nota de la pregunta ${ultimaPregunta.current}`,
+        `Versículos relacionados con la pregunta ${ultimaPregunta.current}`,
+      ];
+    }
+    if (u?.tipo === 'leccion') {
+      return ['La pregunta 1', 'El versículo central', 'Las notas de la lección', 'Lecciones parecidas'];
+    }
+    return ['La matutina de hoy', 'La lección de esta semana', 'Ayuda'];
   };
 
   // Presenta una lista de resultados: los muestra en pantalla y los lee TODOS
@@ -346,7 +402,7 @@ export default function Asistente() {
     if (!vigente(g)) return;
     if (!datos) {
       setEstado('No pude cargar la lección. Conéctate a internet una vez.');
-      hablar('No pude cargar la lección. Conéctate a internet una vez.');
+      hablar(F.sinLeccion);
       return;
     }
     ultimo.current = { tipo: 'leccion', numero: lec.numero };
@@ -369,7 +425,7 @@ export default function Asistente() {
     const lec = leccionVigente(lecciones, fechaHoyISO());
     if (!lec) {
       setEstado('No encontré la lección de esta semana.');
-      hablar('No encontré la lección de esta semana.');
+      hablar(F.sinLeccionSemana);
       return;
     }
     return leerLeccionDeFecha(lec, g);
@@ -409,7 +465,7 @@ export default function Asistente() {
     if (!vigente(g)) return;
     if (!lec || !datos) {
       setEstado('No pude cargar la lección. Conéctate a internet una vez.');
-      hablar('No pude cargar la lección. Conéctate a internet una vez.');
+      hablar(F.sinLeccion);
       return;
     }
     const p = datos.preguntas.find((x) => x.orden === orden);
@@ -438,7 +494,7 @@ export default function Asistente() {
     if (!vigente(g)) return;
     if (!lec) {
       setEstado('No pude cargar la lección. Conéctate a internet una vez.');
-      hablar('No pude cargar la lección. Conéctate a internet una vez.');
+      hablar(F.sinLeccion);
       return;
     }
     ultimaLeccionFecha.current = lec.fecha;
@@ -459,7 +515,7 @@ export default function Asistente() {
     if (!vigente(g)) return;
     if (!lec) {
       setEstado('No pude cargar la lección. Conéctate a internet una vez.');
-      hablar('No pude cargar la lección. Conéctate a internet una vez.');
+      hablar(F.sinLeccion);
       return;
     }
     ultimaLeccionFecha.current = lec.fecha;
@@ -493,6 +549,35 @@ export default function Asistente() {
     reproducir([`Matutina del ${fechaDiaMes(fecha)}.`, v.tema]);
   };
 
+  // "La nota de la matutina de hoy": el apunte del cuaderno para ese día.
+  const hNotaMatutina = async (fecha: string, g: number) => {
+    let v = await getVersiculoLocal(fecha);
+    if (!v) {
+      try {
+        v = await getVersiculoPorFecha(fecha);
+      } catch {
+        v = null;
+      }
+    }
+    if (!vigente(g)) return;
+    if (!v) {
+      setEstado(`No encontré la matutina del ${fechaDiaMes(fecha)}.`);
+      hablar(`No encontré la matutina del ${fechaDiaMes(fecha)}.`);
+      return;
+    }
+    ultimo.current = { tipo: 'matutina', fecha };
+    ultimaCita.current = v.cita;
+    ultimaPregunta.current = null;
+    setResultados(null);
+    if (!v.nota) {
+      setEstado(`La matutina del ${fechaDiaMes(fecha)} no tiene nota.`);
+      reproducir([`Matutina del ${fechaDiaMes(fecha)}.`, F.sinNotaMatutina]);
+      return;
+    }
+    setEstado(`Nota del ${fechaDiaMes(fecha)}: ${v.nota}`);
+    reproducir([`Matutina del ${fechaDiaMes(fecha)}.`, `Nota. ${v.nota}`]);
+  };
+
   // "Las notas de la lección 2" (o la nota de una pregunta concreta).
   const hNotasLeccion = async (
     leccionNum: number | null,
@@ -504,7 +589,7 @@ export default function Asistente() {
     if (!vigente(g)) return;
     if (!lec || !datos) {
       setEstado('No pude cargar la lección. Conéctate a internet una vez.');
-      hablar('No pude cargar la lección. Conéctate a internet una vez.');
+      hablar(F.sinLeccion);
       return;
     }
     const conNota = datos.preguntas.filter(
@@ -541,7 +626,7 @@ export default function Asistente() {
     if (!vigente(g)) return;
     if (!lec || !datos) {
       setEstado('No pude cargar la lección. Conéctate a internet una vez.');
-      hablar('No pude cargar la lección. Conéctate a internet una vez.');
+      hablar(F.sinLeccion);
       return;
     }
     if (!(await avisoDatos())) return;
@@ -568,7 +653,7 @@ export default function Asistente() {
     if (resultados?.items.length) {
       const i = idxResultado.current + dir;
       if (i < 0 || i >= resultados.items.length) {
-        hablar(dir > 0 ? 'No hay más resultados.' : 'Es el primer resultado.');
+        hablar(dir > 0 ? F.noMasResultados : F.primerResultado);
         return;
       }
       leerResultado(i);
@@ -577,7 +662,7 @@ export default function Asistente() {
     const u = ultimo.current;
     if (!u) {
       setEstado('Primero pide una matutina o una lección.');
-      hablar('Primero pide una matutina o una lección.');
+      hablar(F.primeroPide);
       return;
     }
     if (u.tipo === 'matutina') leerMatutina(sumarDias(u.fecha, dir), g);
@@ -585,17 +670,16 @@ export default function Asistente() {
       // Estaba en una pregunta: "siguiente" pasa a la pregunta de al lado.
       const orden = ultimaPregunta.current + dir;
       if (orden >= 1) leerPregunta(u.numero, orden, g);
-      else hablar('Es la primera pregunta.');
+      else hablar(F.primeraPregunta);
     } else if (u.numero + dir >= 1) leerLeccion(u.numero + dir, g);
-    else hablar('Es la primera lección.');
+    else hablar(F.primeraLeccion);
   };
 
   // --- Búsquedas (sin IA: índices y reglas sobre datos locales) ---
 
   const avisoDatos = async (): Promise<boolean> => {
     if (await bibliaDisponible()) return true;
-    const msg =
-      'Los datos de búsqueda aún no se descargan. Conéctate a internet una vez y vuelve a intentar.';
+    const msg = F.sinDatos;
     setEstado(msg);
     hablar(msg);
     return false;
@@ -611,7 +695,7 @@ export default function Asistente() {
     const cita = citaHablada(normalizar(textoBusqueda));
     if (cita) {
       if (!cita.includes(':')) {
-        const msg = 'Dime también el número del versículo. Por ejemplo: Salmos 23 1.';
+        const msg = F.diVersiculo;
         setEstado(msg);
         hablar(msg);
         return;
@@ -623,7 +707,7 @@ export default function Asistente() {
         // El libro sí existe (citaHablada lo validó); el capítulo o el verso no.
         const msg = `${cita} no existe en la Biblia. Revisa el capítulo y el versículo.`;
         setEstado(msg);
-        reproducir([`${citaParaVoz(cita)}, no existe en la Biblia.`, 'Revisa el capítulo y el versículo.']);
+        reproducir([`${citaParaVoz(cita)}, no existe en la Biblia.`, F.revisaCita]);
         return;
       }
       ultimaCita.current = v.cita;
@@ -644,6 +728,7 @@ export default function Asistente() {
       if (!vigente(g)) return;
       const items = res.map((r) => ({
         etiqueta: r.etiqueta,
+        sub: r.texto,
         partes: [`${citaParaVoz(r.etiqueta)}.`, r.texto],
       }));
       presentar(
@@ -660,6 +745,7 @@ export default function Asistente() {
     if (!vigente(g)) return;
     const items = res.map((r) => ({
       etiqueta: r.cita,
+      sub: r.texto,
       partes: [`${citaParaVoz(r.cita)}.`, r.texto],
     }));
     presentar(
@@ -674,7 +760,7 @@ export default function Asistente() {
   const hDondeSeCita = async (citaPedida: string | null, g: number) => {
     const cita = citaPedida ?? ultimaCita.current;
     if (!cita) {
-      hablar('Dime qué cita busco. Por ejemplo: dónde se cita Juan 3 16.');
+      hablar(F.diCita);
       setEstado('Dime qué cita busco. Por ejemplo: “¿dónde se cita Juan 3:16?”');
       return;
     }
@@ -723,7 +809,7 @@ export default function Asistente() {
     if (objetivo.tipo === 'cita') {
       const cita = objetivo.cita ?? ultimaCita.current;
       if (!cita) {
-        hablar('Dime de qué versículo. Por ejemplo: versículos relacionados a Juan 3 16.');
+        hablar(F.diVersiculoRel);
         setEstado('Dime de qué versículo. Por ejemplo: “versículos relacionados a Juan 3:16”.');
         return;
       }
@@ -736,7 +822,7 @@ export default function Asistente() {
       if (!vigente(g)) return;
       if (!lec || !datos) {
         setEstado('No pude cargar la lección. Conéctate a internet una vez.');
-        hablar('No pude cargar la lección. Conéctate a internet una vez.');
+        hablar(F.sinLeccion);
         return;
       }
       if (objetivo.tipo === 'central') {
@@ -774,7 +860,7 @@ export default function Asistente() {
       for (const r of rel) {
         if (anclas.has(r.cita) || vistos.has(r.cita)) continue;
         vistos.add(r.cita);
-        items.push({ etiqueta: r.cita, partes: [`${citaParaVoz(r.cita)}.`, r.texto] });
+        items.push({ etiqueta: r.cita, sub: r.texto, partes: [`${citaParaVoz(r.cita)}.`, r.texto] });
         if (items.length >= 8) break;
       }
       if (items.length >= 8) break;
@@ -805,7 +891,7 @@ export default function Asistente() {
     const datos = fecha ? await getLeccionLocal(fecha) : null;
     if (!vigente(g)) return;
     if (!datos) {
-      hablar('Primero abre una lección, y luego te busco preguntas similares.');
+      hablar(F.abrePrimero);
       setEstado('Primero abre una lección (di, por ejemplo, “lección 3”).');
       return;
     }
@@ -844,6 +930,8 @@ export default function Asistente() {
         return hTituloLeccion(c.leccion, g);
       case 'temaMatutina':
         return hTemaMatutina(c.fecha, g);
+      case 'notaMatutina':
+        return hNotaMatutina(c.fecha, g);
       case 'notasLeccion':
         return hNotasLeccion(c.leccion, c.pregunta, g);
       case 'leccionesSimilares':
@@ -873,6 +961,8 @@ export default function Asistente() {
         const u = ultimo.current;
         if (resultados?.items.length) return leerResultado(idxResultado.current);
         if (u?.tipo === 'matutina') return leerMatutina(u.fecha, g);
+        if (u?.tipo === 'leccion' && ultimaPregunta.current !== null)
+          return leerPregunta(u.numero, ultimaPregunta.current, g);
         if (u?.tipo === 'leccion') return leerLeccion(u.numero, g);
         setEstado('Primero pide una matutina o una lección.');
         return;
@@ -892,20 +982,24 @@ export default function Asistente() {
         setEstado('Detenido.');
         return;
       case 'ir': {
-        const destinos = { inicio: '/', calendario: '/calendario', estudio: '/estudio' } as const;
-        const nombre = { inicio: 'Inicio', calendario: 'Calendario', estudio: 'Estudio' }[c.destino];
-        setEstado(`Abriendo ${nombre}.`);
-        hablar(`Abriendo ${nombre}.`);
+        const destinos = {
+          inicio: '/',
+          calendario: '/calendario',
+          estudio: '/estudio',
+          buscar: '/buscar',
+        } as const;
+        setEstado(F.abriendo[c.destino]);
+        hablar(F.abriendo[c.destino]);
         router.push(destinos[c.destino]);
         return;
       }
       case 'ayuda':
-        setEstado(AYUDA);
-        hablar(AYUDA);
+        setEstado(F.ayuda);
+        hablar(F.ayuda);
         return;
       default:
-        setEstado('No te entendí. Di "ayuda" para escuchar los comandos.');
-        hablar('No te entendí. Di ayuda para escuchar los comandos.');
+        setEstado('No te entendí. Di "ayuda" para escuchar los comandos, o toca una sugerencia.');
+        hablar(F.noEntendi);
     }
   };
 
@@ -917,16 +1011,38 @@ export default function Asistente() {
       contentContainerStyle={styles.content}
       keyboardShouldPersistTaps="handled"
     >
-      <Text style={styles.titulo}>Modo por voz</Text>
       <Text style={styles.ayuda}>
         Toca el micrófono y di, por ejemplo: “la matutina de hoy”, “lección 3”, “busca el
         versículo que dice…”, “¿dónde se cita Juan 3:16?” o “preguntas similares”.
       </Text>
 
+      {permiso === 'pedir' || permiso === 'bloqueado' ? (
+        <View style={styles.permisoCard} accessibilityLiveRegion="polite">
+          <Ionicons name="mic-circle-outline" size={32} color="#185FA5" />
+          <Text style={styles.permisoTitulo}>
+            {permiso === 'pedir' ? 'Necesito usar el micrófono' : 'El micrófono está desactivado'}
+          </Text>
+          <Text style={styles.permisoTexto}>
+            {permiso === 'pedir'
+              ? 'Para entender lo que dices, la app escucha solo mientras el botón del micrófono está activo. No graba ni guarda lo que dices. El teléfono te preguntará si lo permites.'
+              : 'Para usar el modo por voz, permite el micrófono en los ajustes del teléfono: Aplicaciones → Lecciones y Matutinas → Permisos → Micrófono.'}
+          </Text>
+          <Pressable
+            onPress={permiso === 'pedir' ? escuchar : () => Linking.openSettings()}
+            style={({ pressed }) => [styles.permisoBtn, pressed && styles.pressed]}
+            accessibilityRole="button"
+          >
+            <Text style={styles.permisoBtnText}>
+              {permiso === 'pedir' ? 'Permitir el micrófono' : 'Abrir ajustes del teléfono'}
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
+
       <Pressable
         onPress={escuchar}
         accessibilityRole="button"
-        accessibilityLabel={escuchando ? 'Escuchando' : 'Tocar para hablar'}
+        accessibilityLabel={escuchando ? 'Escuchando. Habla ahora' : 'Tocar para hablar'}
         style={({ pressed }) => [
           styles.micBtn,
           escuchando && styles.micBtnActivo,
@@ -935,7 +1051,15 @@ export default function Asistente() {
       >
         <Ionicons name={escuchando ? 'mic' : 'mic-outline'} size={72} color="#FFFFFF" />
       </Pressable>
-      <Text style={styles.micLabel}>{escuchando ? 'Escuchando…' : 'Tocar para hablar'}</Text>
+      <Text style={styles.micLabel} accessibilityLiveRegion="polite">
+        {escuchando ? 'Escuchando… habla ahora' : 'Tocar para hablar'}
+      </Text>
+      {estadoVoz === 'preparando' ? (
+        <View style={styles.preparando}>
+          <ActivityIndicator color="#185FA5" />
+          <Text style={styles.preparandoText}>Preparando audio…</Text>
+        </View>
+      ) : null}
 
       {texto ? (
         <View style={styles.oiste}>
@@ -944,9 +1068,30 @@ export default function Asistente() {
         </View>
       ) : null}
 
-      <Text style={[styles.estado, conEscala(styles.estado, esc)]} accessibilityLiveRegion="polite">
-        {estado}
-      </Text>
+      {estado ? (
+        <Text style={[styles.estado, conEscala(styles.estado, esc)]} accessibilityLiveRegion="polite">
+          {estado}
+        </Text>
+      ) : null}
+
+      {permiso === 'ok' ? (
+        <View style={styles.sugerencias}>
+          <Text style={styles.sugerenciasTitulo}>Puedes decir o tocar:</Text>
+          <View style={styles.chips}>
+            {sugerencias().map((frase) => (
+              <Pressable
+                key={frase}
+                onPress={() => usarSugerencia(frase)}
+                style={({ pressed }) => [styles.chip, pressed && styles.pressed]}
+                accessibilityRole="button"
+                accessibilityLabel={`Sugerencia: ${frase}`}
+              >
+                <Text style={styles.chipText}>{frase}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      ) : null}
 
       {resultados ? (
         <View style={styles.resultados}>
@@ -965,7 +1110,10 @@ export default function Asistente() {
                   {item.etiqueta}
                 </Text>
                 {item.sub ? (
-                  <Text style={[styles.resultadoSub, conEscala(styles.resultadoSub, esc)]}>
+                  <Text
+                    style={[styles.resultadoSub, conEscala(styles.resultadoSub, esc)]}
+                    numberOfLines={3}
+                  >
                     {item.sub}
                   </Text>
                 ) : null}
@@ -992,7 +1140,6 @@ export default function Asistente() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#F1EFE8' },
   content: { padding: 24, alignItems: 'center', paddingBottom: 48 },
-  titulo: { fontSize: 26, fontWeight: '700', color: '#042C53', marginBottom: 8 },
   ayuda: { fontSize: 16, lineHeight: 24, color: '#5F5E5A', textAlign: 'center', marginBottom: 28 },
   micBtn: {
     width: 160,
@@ -1036,7 +1183,43 @@ const styles = StyleSheet.create({
   resultadoTextos: { flex: 1 },
   resultadoEtiqueta: { fontSize: 17, fontWeight: '600', color: '#042C53' },
   resultadoSub: { fontSize: 14, color: '#5F5E5A', marginTop: 2 },
-  resultadosPie: { fontSize: 12, color: '#8A887F', textAlign: 'center', marginTop: 6 },
+  resultadosPie: { fontSize: 12, color: '#5F5E5A', textAlign: 'center', marginTop: 6 },
+  permisoCard: {
+    alignSelf: 'stretch',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 18,
+    marginBottom: 24,
+    gap: 8,
+  },
+  permisoTitulo: { fontSize: 17, fontWeight: '700', color: '#042C53', textAlign: 'center' },
+  permisoTexto: { fontSize: 15, lineHeight: 22, color: '#2C2C2A', textAlign: 'center' },
+  permisoBtn: {
+    alignSelf: 'stretch',
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#185FA5',
+    borderRadius: 14,
+    marginTop: 6,
+  },
+  permisoBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
+  preparando: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10 },
+  preparandoText: { fontSize: 15, color: '#0C447C', fontWeight: '600' },
+  sugerencias: { alignSelf: 'stretch', marginTop: 22 },
+  sugerenciasTitulo: { fontSize: 14, fontWeight: '600', color: '#5F5E5A', marginBottom: 8 },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chip: {
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    backgroundColor: '#E6F1FB',
+    borderWidth: 1,
+    borderColor: '#3D79B8',
+  },
+  chipText: { fontSize: 15, fontWeight: '600', color: '#0C447C' },
   btnDetener: {
     flexDirection: 'row',
     alignItems: 'center',

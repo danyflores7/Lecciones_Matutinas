@@ -77,6 +77,13 @@ export default function Memorizar() {
       return s;
     });
 
+  // Revela la siguiente palabra oculta en orden (también sirve con TalkBack,
+  // donde las palabras sueltas del versículo no se pueden tocar una por una).
+  const revelarSiguiente = () => {
+    const siguiente = [...ocultos].sort((a, b) => a - b).find((i) => !revelados.has(i));
+    if (siguiente !== undefined) revelar(siguiente);
+  };
+
   if (loading) {
     return (
       <View style={styles.centered}>
@@ -102,11 +109,13 @@ export default function Memorizar() {
       <Text style={styles.tema}>{verse.tema}</Text>
       <Text style={styles.cita}>{verse.cita}</Text>
 
-      <View style={styles.niveles}>
+      <View style={styles.niveles} accessibilityRole="radiogroup" accessibilityLabel="Dificultad">
         {(['facil', 'medio', 'dificil'] as Nivel[]).map((n) => (
           <Pressable
             key={n}
             onPress={() => cambiarNivel(n)}
+            accessibilityRole="radio"
+            accessibilityState={{ checked: nivel === n }}
             style={[styles.nivelBtn, nivel === n && styles.nivelBtnActivo]}
           >
             <Text style={[styles.nivelText, nivel === n && styles.nivelTextActivo]}>
@@ -116,7 +125,13 @@ export default function Memorizar() {
         ))}
       </View>
 
-      <View style={styles.card}>
+      <View
+        style={styles.card}
+        accessible
+        accessibilityLabel={tokens
+          .map((t, i) => (ocultos.has(i) && !revelados.has(i) ? 'espacio en blanco' : t))
+          .join(' ')}
+      >
         <Text style={[styles.versiculo, conEscala(styles.versiculo, esc)]}>
           {tokens.map((t, i) => {
             const oculto = ocultos.has(i) && !revelados.has(i);
@@ -134,15 +149,35 @@ export default function Memorizar() {
         </Text>
       </View>
 
-      <Text style={styles.ayuda}>
+      <Text style={styles.ayuda} accessibilityLiveRegion="polite">
         {totalOcultos === 0
           ? 'Sin palabras ocultas en este nivel.'
-          : `Toca una palabra en blanco para revelarla.  ${reveladosCount}/${totalOcultos} reveladas.`}
+          : `Toca una palabra en blanco para revelarla.  ${reveladosCount} de ${totalOcultos} reveladas.`}
       </Text>
 
-      <Pressable style={({ pressed }) => [styles.reiniciar, pressed && { opacity: 0.7 }]} onPress={() => setRevelados(new Set())}>
-        <Text style={styles.reiniciarText}>Reiniciar</Text>
-      </Pressable>
+      <View style={styles.acciones}>
+        <Pressable
+          style={({ pressed }) => [
+            styles.btnRevelar,
+            reveladosCount === totalOcultos && styles.deshabilitado,
+            pressed && { opacity: 0.85 },
+          ]}
+          onPress={revelarSiguiente}
+          disabled={reveladosCount === totalOcultos}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: reveladosCount === totalOcultos }}
+        >
+          <Text style={styles.btnRevelarText}>Revelar una palabra</Text>
+        </Pressable>
+        <Pressable
+          style={({ pressed }) => [styles.reiniciar, pressed && { opacity: 0.7 }]}
+          onPress={() => setRevelados(new Set())}
+          accessibilityRole="button"
+          accessibilityLabel="Reiniciar: volver a ocultar las palabras"
+        >
+          <Text style={styles.reiniciarText}>Reiniciar</Text>
+        </Pressable>
+      </View>
     </ScrollView>
   );
 }
@@ -152,21 +187,22 @@ const styles = StyleSheet.create({
   content: { padding: 20, paddingBottom: 48 },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F1EFE8', padding: 24 },
   vacio: { fontSize: 15, color: '#5F5E5A', textAlign: 'center' },
-  fecha: { fontSize: 14, color: '#5F5E5A', textTransform: 'capitalize' },
+  fecha: { fontSize: 14, color: '#5F5E5A' },
   tema: { fontSize: 18, fontWeight: '600', color: '#185FA5', marginTop: 2 },
   cita: { fontSize: 15, fontWeight: '600', color: '#0C447C', marginTop: 6, marginBottom: 14 },
   niveles: { flexDirection: 'row', gap: 8, marginBottom: 16 },
   nivelBtn: {
     flex: 1,
-    paddingVertical: 10,
+    minHeight: 48,
+    justifyContent: 'center',
     borderRadius: 12,
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#E5E3DB',
+    borderColor: '#6E6C66',
     alignItems: 'center',
   },
   nivelBtnActivo: { backgroundColor: '#185FA5', borderColor: '#185FA5' },
-  nivelText: { fontSize: 14, fontWeight: '600', color: '#5F5E5A' },
+  nivelText: { fontSize: 14, fontWeight: '600', color: '#3D3C39' },
   nivelTextActivo: { color: '#FFFFFF' },
   card: { backgroundColor: '#FFFFFF', borderRadius: 18, padding: 22 },
   versiculo: {
@@ -181,14 +217,25 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   ayuda: { fontSize: 13, color: '#5F5E5A', marginTop: 16, textAlign: 'center' },
+  acciones: { flexDirection: 'row', gap: 10, marginTop: 16 },
+  btnRevelar: {
+    flex: 1,
+    minHeight: 48,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 12,
+    backgroundColor: '#185FA5',
+  },
+  btnRevelarText: { fontSize: 15, fontWeight: '600', color: '#FFFFFF' },
+  deshabilitado: { opacity: 0.45 },
   reiniciar: {
-    marginTop: 16,
-    alignSelf: 'center',
-    paddingVertical: 10,
+    minHeight: 48,
+    justifyContent: 'center',
     paddingHorizontal: 24,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#B4B2A9',
+    borderColor: '#6E6C66',
+    backgroundColor: '#FFFFFF',
   },
   reiniciarText: { fontSize: 15, fontWeight: '600', color: '#444441' },
 });

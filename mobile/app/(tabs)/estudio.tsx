@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -7,7 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { getLecciones, type Leccion } from '../../lib/supabase';
 import { fechaDiaMes, fechaHoyISO, MESES } from '../../lib/fechas';
 import { guardarCache, leerCache } from '../../lib/cache';
-import { getLeccionesLocal } from '../../lib/contenido';
+import { getLeccionesLocal, leccionVigente } from '../../lib/contenido';
 
 type Mes = { key: string; label: string; total: number; lecciones: Leccion[] };
 type Fila = { tipo: 'mes'; mes: Mes; abierto: boolean } | { tipo: 'leccion'; l: Leccion };
@@ -24,6 +24,8 @@ export default function Estudio() {
   const [error, setError] = useState<string | null>(null);
   const mesHoy = fechaHoyISO().slice(0, 7);
   const [abiertos, setAbiertos] = useState<Set<string>>(() => new Set([mesHoy]));
+  const lista = useRef<FlatList<Fila>>(null);
+  const yaCentrado = useRef(false);
 
   useEffect(() => {
     (async () => {
@@ -75,6 +77,34 @@ export default function Estudio() {
     return out;
   }, [meses, abiertosEfectivo]);
 
+  // La lección que se estudia esta semana (la del próximo sábado): se marca
+  // y la lista abre colocada en ella. Su mes siempre queda abierto.
+  const vigente = useMemo(() => leccionVigente(items, fechaHoyISO()), [items]);
+  useEffect(() => {
+    if (vigente) setAbiertos((prev) => (prev.has(vigente.fecha.slice(0, 7)) ? prev : new Set([...prev, vigente.fecha.slice(0, 7)])));
+  }, [vigente]);
+  const indiceVigente = useMemo(
+    () => filas.findIndex((f) => f.tipo === 'leccion' && f.l.fecha === vigente?.fecha),
+    [filas, vigente]
+  );
+  const irAVigente = useCallback(
+    (animado: boolean) => {
+      if (indiceVigente >= 0) {
+        lista.current?.scrollToIndex({ index: indiceVigente, viewPosition: 0.2, animated: animado });
+      }
+    },
+    [indiceVigente]
+  );
+  useEffect(() => {
+    if (loading || yaCentrado.current || indiceVigente < 0) return;
+    const t = setTimeout(() => {
+      if (!lista.current) return;
+      yaCentrado.current = true;
+      irAVigente(false);
+    }, 80);
+    return () => clearTimeout(t);
+  }, [loading, indiceVigente, irAVigente]);
+
   const toggle = (key: string) =>
     setAbiertos((prev) => {
       const n = new Set(prev);
@@ -95,9 +125,29 @@ export default function Estudio() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <Text style={styles.titulo}>Estudio</Text>
+      <View style={styles.tituloFila}>
+        <Text style={styles.titulo} accessibilityRole="header">Estudio</Text>
+        {vigente ? (
+          <Pressable
+            onPress={() => irAVigente(true)}
+            style={({ pressed }) => [styles.semanaBtn, pressed && styles.pressed]}
+            accessibilityRole="button"
+            accessibilityLabel="Ir a la lección de esta semana"
+          >
+            <Ionicons name="bookmark-outline" size={18} color="#185FA5" />
+            <Text style={styles.semanaBtnText}>Esta semana</Text>
+          </Pressable>
+        ) : null}
+      </View>
       <FlatList
+        ref={lista}
         data={filas}
+        onScrollToIndexFailed={(info) => {
+          lista.current?.scrollToOffset({ offset: info.averageItemLength * info.index, animated: false });
+          setTimeout(() => {
+            lista.current?.scrollToIndex({ index: info.index, viewPosition: 0.2, animated: false });
+          }, 100);
+        }}
         keyExtractor={(f) => (f.tipo === 'mes' ? `m:${f.mes.key}` : `l:${f.l.fecha}`)}
         contentContainerStyle={styles.lista}
         ListEmptyComponent={<Text style={styles.error}>{error ?? 'Aún no hay lecciones.'}</Text>}
@@ -108,6 +158,9 @@ export default function Estudio() {
               <Pressable
                 style={({ pressed }) => [styles.mesFila, esMesHoy && styles.mesFilaHoy, pressed && styles.pressed]}
                 onPress={() => toggle(item.mes.key)}
+                accessibilityRole="button"
+                accessibilityLabel={`${item.mes.label}, ${item.mes.total} ${item.mes.total === 1 ? 'lección' : 'lecciones'}`}
+                accessibilityState={{ expanded: item.abierto }}
               >
                 <Text style={[styles.mesNombre, esMesHoy && styles.mesNombreHoy]}>{item.mes.label}</Text>
                 <View style={styles.mesCount}>
@@ -118,11 +171,19 @@ export default function Estudio() {
             );
           }
           const l = item.l;
+          const esVigente = l.fecha === vigente?.fecha;
           return (
             <Pressable
-              style={({ pressed }) => [styles.card, pressed && styles.pressed]}
+              style={({ pressed }) => [styles.card, esVigente && styles.cardVigente, pressed && styles.pressed]}
               onPress={() => router.push({ pathname: '/leccion', params: { fecha: l.fecha } })}
+              accessibilityRole="button"
+              accessibilityLabel={`Lección ${l.numero}${esVigente ? ', la de esta semana' : ''}, ${fechaDiaMes(l.fecha)}. ${l.titulo}. Versículo central: ${l.versiculo_central_cita}`}
             >
+              {esVigente ? (
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>Esta semana</Text>
+                </View>
+              ) : null}
               <View style={styles.cardHead}>
                 <Text style={styles.num}>Lección {l.numero}</Text>
                 <Text style={styles.fecha}>{fechaDiaMes(l.fecha)}</Text>
@@ -131,7 +192,7 @@ export default function Estudio() {
               {l.serie ? <Text style={styles.serie}>{l.serie}</Text> : null}
               <View style={styles.cardFoot}>
                 <Text style={styles.central}>{l.versiculo_central_cita}</Text>
-                <Ionicons name="chevron-forward" size={18} color="#B4B2A9" />
+                <Ionicons name="chevron-forward" size={18} color="#6E6C66" />
               </View>
             </Pressable>
           );
@@ -144,8 +205,22 @@ export default function Estudio() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#F1EFE8' },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  tituloFila: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingRight: 16 },
   titulo: { fontSize: 26, fontWeight: '600', color: '#042C53', paddingHorizontal: 20, paddingTop: 8, paddingBottom: 8 },
-  lista: { paddingHorizontal: 16, paddingBottom: 32 },
+  semanaBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    minHeight: 44,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#185FA5',
+    backgroundColor: '#FFFFFF',
+  },
+  semanaBtnText: { fontSize: 14, fontWeight: '600', color: '#185FA5' },
+  // Espacio extra abajo para que el botón flotante del micrófono no tape la última tarjeta.
+  lista: { paddingHorizontal: 16, paddingBottom: 120 },
   mesFila: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -163,10 +238,13 @@ const styles = StyleSheet.create({
   mesCount: { backgroundColor: '#E6F1FB', borderRadius: 999, paddingHorizontal: 9, paddingVertical: 2, minWidth: 30, alignItems: 'center' },
   mesCountText: { fontSize: 12, fontWeight: '600', color: '#0C447C' },
   card: { backgroundColor: '#FFFFFF', borderRadius: 16, padding: 16, marginTop: 10 },
+  cardVigente: { borderWidth: 2, borderColor: '#185FA5' },
+  badge: { alignSelf: 'flex-start', backgroundColor: '#185FA5', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3, marginBottom: 8 },
+  badgeText: { fontSize: 12, fontWeight: '700', color: '#FFFFFF' },
   pressed: { opacity: 0.7 },
   cardHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
   num: { fontSize: 13, fontWeight: '600', color: '#185FA5', textTransform: 'uppercase', letterSpacing: 0.5 },
-  fecha: { fontSize: 13, color: '#5F5E5A', textTransform: 'capitalize' },
+  fecha: { fontSize: 13, color: '#5F5E5A' },
   cardTitulo: { fontSize: 17, fontWeight: '600', color: '#042C53' },
   serie: { fontSize: 13, color: '#5F5E5A', marginTop: 2 },
   cardFoot: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 },

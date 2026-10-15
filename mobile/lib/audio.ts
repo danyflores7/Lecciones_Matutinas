@@ -222,8 +222,11 @@ async function hashesDeTodo(): Promise<Set<string>> {
 // Descarga TODO el audio en segundo plano. Se puede seguir navegando por la
 // app; si ya está corriendo, no vuelve a arrancar. Idempotente (reanuda lo
 // que falte). Desactiva la expiración (modo completo).
+let cancelada = false;
+
 export async function descargarTodo(): Promise<void> {
   if (estadoDescarga.activa) return;
+  cancelada = false;
   estadoDescarga = { activa: true, hecho: 0, total: 0, completo: false };
   emitir();
   try {
@@ -231,6 +234,7 @@ export async function descargarTodo(): Promise<void> {
     estadoDescarga.total = hashes.size;
     emitir();
     for (const h of hashes) {
+      if (cancelada) return; // lo ya bajado se queda; se puede reanudar
       await descargaUnica(h);
       estadoDescarga.hecho += 1;
       emitir();
@@ -241,6 +245,11 @@ export async function descargarTodo(): Promise<void> {
     estadoDescarga.activa = false;
     emitir();
   }
+}
+
+// Detiene la descarga "todo" tras el clip en curso.
+export function cancelarDescarga(): void {
+  cancelada = true;
 }
 
 // Bytes ocupados por los audios descargados.
@@ -257,6 +266,7 @@ export async function tamanoOcupado(): Promise<number> {
 }
 
 export async function borrarAudios(): Promise<void> {
+  cancelada = true;
   try {
     const d = carpeta();
     if (d.exists) d.delete();

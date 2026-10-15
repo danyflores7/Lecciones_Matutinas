@@ -50,8 +50,8 @@ export async function programarRecordatorioDiario(
   await Notifications.cancelAllScheduledNotificationsAsync();
   await Notifications.scheduleNotificationAsync({
     content: {
-      title: 'Versículo del día',
-      body: 'Abre la app para repasar tu matutina de hoy.',
+      title: 'Tu matutina de hoy',
+      body: 'Abre la app para leer o escuchar la matutina de hoy.',
       sound: true,
     },
     trigger: {

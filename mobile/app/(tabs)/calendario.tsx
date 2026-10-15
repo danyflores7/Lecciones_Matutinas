@@ -5,7 +5,14 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
 import { getTodosLosVersiculos, type VersiculoDia } from '../../lib/supabase';
-import { diaDelMes, fechaHoyISO, mesAbrev, MESES } from '../../lib/fechas';
+import {
+  capitalizar,
+  diaDelMes,
+  fechaDiaMes,
+  fechaHoyISO,
+  mesAbrev,
+  MESES,
+} from '../../lib/fechas';
 import { guardarCache, leerCache } from '../../lib/cache';
 import { getVersiculosLocal } from '../../lib/contenido';
 import { detenerVoz, reproducirPartes } from '../../lib/voz';
@@ -35,6 +42,8 @@ export default function Calendario() {
   // Al abrir, solo el mes actual está expandido (mínimo scroll).
   const [abiertos, setAbiertos] = useState<Set<string>>(() => new Set([mesHoy]));
 
+  const lista = useRef<FlatList<Fila>>(null);
+  const yaCentrado = useRef(false);
   const velocidad = useRef(1.0);
   useEffect(() => {
     getVelocidad().then((v) => {
@@ -49,7 +58,7 @@ export default function Calendario() {
         detenerVoz();
         setSonando(null);
       };
-    }, [])
+    }, []),
   );
 
   const escucharDia = (v: VersiculoDia) => {
@@ -117,6 +126,33 @@ export default function Calendario() {
     return out;
   }, [meses, abiertos]);
 
+  // Al abrir, se coloca en el día de hoy (y el botón "Hoy" vuelve a él).
+  const indiceHoy = useMemo(
+    () => filas.findIndex((f) => f.tipo === 'dia' && f.v.fecha === hoy),
+    [filas, hoy],
+  );
+
+  const irAHoy = useCallback(
+    (animado: boolean) => {
+      if (indiceHoy < 0) {
+        setAbiertos((prev) => new Set([...prev, mesHoy]));
+        return;
+      }
+      lista.current?.scrollToIndex({ index: indiceHoy, viewPosition: 0.3, animated: animado });
+    },
+    [indiceHoy, mesHoy],
+  );
+
+  useEffect(() => {
+    if (loading || yaCentrado.current || indiceHoy < 0) return;
+    const t = setTimeout(() => {
+      if (!lista.current) return;
+      yaCentrado.current = true;
+      irAHoy(false);
+    }, 80);
+    return () => clearTimeout(t);
+  }, [loading, indiceHoy, irAHoy]);
+
   const toggle = (key: string) =>
     setAbiertos((prev) => {
       const n = new Set(prev);
@@ -137,51 +173,104 @@ export default function Calendario() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <Text style={styles.titulo}>Calendario</Text>
+      <View style={styles.tituloFila}>
+        <Text style={styles.titulo} accessibilityRole="header">
+          Calendario
+        </Text>
+        <Pressable
+          onPress={() => irAHoy(true)}
+          style={({ pressed }) => [styles.hoyBtn, pressed && styles.filaPressed]}
+          accessibilityRole="button"
+          accessibilityLabel="Ir al día de hoy"
+        >
+          <Ionicons name="today-outline" size={18} color="#185FA5" />
+          <Text style={styles.hoyText}>Hoy</Text>
+        </Pressable>
+      </View>
       <FlatList
+        ref={lista}
         data={filas}
-        keyExtractor={(f) => (f.tipo === 'mes' ? `m:${f.mes.key}` : f.tipo === 'tema' ? `t:${f.id}` : `d:${f.v.fecha}`)}
+        onScrollToIndexFailed={(info) => {
+          // Las filas miden distinto: se acerca con un estimado y reintenta.
+          lista.current?.scrollToOffset({
+            offset: info.averageItemLength * info.index,
+            animated: false,
+          });
+          setTimeout(() => {
+            lista.current?.scrollToIndex({ index: info.index, viewPosition: 0.3, animated: false });
+          }, 100);
+        }}
+        keyExtractor={(f) =>
+          f.tipo === 'mes' ? `m:${f.mes.key}` : f.tipo === 'tema' ? `t:${f.id}` : `d:${f.v.fecha}`
+        }
         contentContainerStyle={styles.lista}
         renderItem={({ item }) => {
           if (item.tipo === 'mes') {
             const esMesHoy = item.mes.key === mesHoy;
             return (
               <Pressable
-                style={({ pressed }) => [styles.mesFila, esMesHoy && styles.mesFilaHoy, pressed && styles.filaPressed]}
+                style={({ pressed }) => [
+                  styles.mesFila,
+                  esMesHoy && styles.mesFilaHoy,
+                  pressed && styles.filaPressed,
+                ]}
                 onPress={() => toggle(item.mes.key)}
+                accessibilityRole="button"
+                accessibilityLabel={`${item.mes.label}, ${item.mes.total} matutinas`}
+                accessibilityState={{ expanded: item.abierto }}
               >
-                <Text style={[styles.mesNombre, esMesHoy && styles.mesNombreHoy]}>{item.mes.label}</Text>
+                <Text style={[styles.mesNombre, esMesHoy && styles.mesNombreHoy]}>
+                  {item.mes.label}
+                </Text>
                 <View style={styles.mesCount}>
                   <Text style={styles.mesCountText}>{item.mes.total}</Text>
                 </View>
-                <Ionicons name={item.abierto ? 'chevron-up' : 'chevron-down'} size={20} color="#185FA5" />
+                <Ionicons
+                  name={item.abierto ? 'chevron-up' : 'chevron-down'}
+                  size={20}
+                  color="#185FA5"
+                />
               </Pressable>
             );
           }
           if (item.tipo === 'tema') {
-            return <Text style={styles.seccion}>{item.titulo}</Text>;
+            return (
+              <Text style={styles.seccion} accessibilityRole="header">
+                {item.titulo}
+              </Text>
+            );
           }
           const v = item.v;
           const esHoy = v.fecha === hoy;
+          // Dos botones hermanos (no uno dentro de otro): abrir el día y escucharlo.
           return (
-            <Pressable
-              style={({ pressed }) => [styles.fila, esHoy && styles.filaHoy, pressed && styles.filaPressed]}
-              onPress={() => router.push({ pathname: '/memorizar', params: { fecha: v.fecha } })}
-            >
-              <View style={[styles.diaBox, esHoy && styles.diaBoxHoy]}>
-                <Text style={[styles.diaNum, esHoy && styles.diaNumHoy]}>{diaDelMes(v.fecha)}</Text>
-                <Text style={[styles.diaMes, esHoy && styles.diaNumHoy]}>{mesAbrev(v.fecha)}</Text>
-              </View>
-              <View style={styles.filaTexto}>
-                <Text style={styles.cita}>{v.cita}</Text>
-                <Text style={styles.dia} numberOfLines={1}>
-                  {v.dia_semana}
-                  {esHoy ? ' · hoy' : ''}
-                </Text>
-              </View>
+            <View style={[styles.fila, esHoy && styles.filaHoy]}>
+              <Pressable
+                style={({ pressed }) => [styles.filaAbrir, pressed && styles.filaPressed]}
+                onPress={() => router.push({ pathname: '/matutina', params: { fecha: v.fecha } })}
+                accessibilityRole="button"
+                accessibilityLabel={`${capitalizar(v.dia_semana)} ${fechaDiaMes(v.fecha)}${esHoy ? ', hoy' : ''}. ${v.cita}`}
+                accessibilityHint="Abre la matutina de ese día"
+              >
+                <View style={[styles.diaBox, esHoy && styles.diaBoxHoy]}>
+                  <Text style={[styles.diaNum, esHoy && styles.diaNumHoy]}>
+                    {diaDelMes(v.fecha)}
+                  </Text>
+                  <Text style={[styles.diaMes, esHoy && styles.diaNumHoy]}>
+                    {mesAbrev(v.fecha)}
+                  </Text>
+                </View>
+                <View style={styles.filaTexto}>
+                  <Text style={styles.cita}>{v.cita}</Text>
+                  <Text style={styles.dia} numberOfLines={1}>
+                    {capitalizar(v.dia_semana)}
+                    {esHoy ? ' · hoy' : ''}
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color="#6E6C66" />
+              </Pressable>
               <Pressable
                 onPress={() => escucharDia(v)}
-                hitSlop={10}
                 accessibilityRole="button"
                 accessibilityLabel={
                   sonando === v.fecha ? `Detener ${v.cita}` : `Escuchar ${v.cita}`
@@ -194,8 +283,7 @@ export default function Calendario() {
                   color="#185FA5"
                 />
               </Pressable>
-              <Ionicons name="chevron-forward" size={18} color="#B4B2A9" />
-            </Pressable>
+            </View>
           );
         }}
         ListEmptyComponent={<Text style={styles.error}>{error ?? 'Sin datos.'}</Text>}
@@ -207,8 +295,34 @@ export default function Calendario() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#F1EFE8' },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  titulo: { fontSize: 26, fontWeight: '600', color: '#042C53', paddingHorizontal: 20, paddingTop: 8, paddingBottom: 8 },
-  lista: { paddingHorizontal: 16, paddingBottom: 32 },
+  tituloFila: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingRight: 16,
+  },
+  titulo: {
+    fontSize: 26,
+    fontWeight: '600',
+    color: '#042C53',
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: 8,
+  },
+  hoyBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    minHeight: 44,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#185FA5',
+    backgroundColor: '#FFFFFF',
+  },
+  hoyText: { fontSize: 14, fontWeight: '600', color: '#185FA5' },
+  // Espacio extra abajo para que el botón flotante del micrófono no tape la última fila.
+  lista: { paddingHorizontal: 16, paddingBottom: 120 },
   mesFila: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -222,7 +336,14 @@ const styles = StyleSheet.create({
   mesFilaHoy: { borderWidth: 2, borderColor: '#185FA5' },
   mesNombre: { flex: 1, fontSize: 18, fontWeight: '700', color: '#042C53' },
   mesNombreHoy: { color: '#185FA5' },
-  mesCount: { backgroundColor: '#E6F1FB', borderRadius: 999, paddingHorizontal: 9, paddingVertical: 2, minWidth: 30, alignItems: 'center' },
+  mesCount: {
+    backgroundColor: '#E6F1FB',
+    borderRadius: 999,
+    paddingHorizontal: 9,
+    paddingVertical: 2,
+    minWidth: 30,
+    alignItems: 'center',
+  },
   mesCountText: { fontSize: 12, fontWeight: '600', color: '#0C447C' },
   seccion: {
     fontSize: 13,
@@ -239,20 +360,28 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
     borderRadius: 14,
-    padding: 12,
+    paddingRight: 6,
     marginBottom: 8,
-    gap: 12,
+    gap: 4,
   },
+  filaAbrir: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12 },
   filaHoy: { borderWidth: 2, borderColor: '#185FA5' },
   filaPressed: { opacity: 0.7 },
-  diaBox: { width: 46, alignItems: 'center', justifyContent: 'center', backgroundColor: '#E6F1FB', borderRadius: 10, paddingVertical: 6 },
+  diaBox: {
+    width: 46,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#E6F1FB',
+    borderRadius: 10,
+    paddingVertical: 6,
+  },
   diaBoxHoy: { backgroundColor: '#185FA5' },
   diaNum: { fontSize: 18, fontWeight: '600', color: '#0C447C' },
   diaNumHoy: { color: '#FFFFFF' },
   diaMes: { fontSize: 11, color: '#0C447C', textTransform: 'uppercase' },
   filaTexto: { flex: 1 },
-  vozBtn: { paddingHorizontal: 4 },
+  vozBtn: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
   cita: { fontSize: 15, fontWeight: '600', color: '#2C2C2A' },
-  dia: { fontSize: 13, color: '#5F5E5A', marginTop: 2, textTransform: 'capitalize' },
+  dia: { fontSize: 13, color: '#5F5E5A', marginTop: 2 },
   error: { color: '#A32D2D', fontSize: 13, textAlign: 'center', padding: 24 },
 });

@@ -9,11 +9,12 @@
 // Salida: tools/gen-audio/out/v1/<sha1>.mp3
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
+import { frasesFijas } from '../../mobile/lib/frases';
 import { segmentosLeccion, segmentosMatutina } from '../../mobile/lib/segmentos';
 
 const execFileP = promisify(execFile);
@@ -46,7 +47,7 @@ function sha1(texto: string): string {
 async function main() {
   console.log('Descargando contenido…');
   const [versiculos, lecciones, preguntas, citasRows] = await Promise.all([
-    tabla('versiculos_dia?select=fecha,cita,texto,tema&limit=2000'),
+    tabla('versiculos_dia?select=fecha,cita,texto,tema,nota&limit=2000'),
     tabla('lecciones?select=id,numero,fecha,titulo,versiculo_central_cita,versiculo_central_texto,introduccion&limit=2000'),
     tabla('lecciones_preguntas?select=leccion_id,orden,pregunta,citas,nota&limit=2000'),
     tabla('citas_texto?select=cita,texto&limit=2000'),
@@ -89,38 +90,17 @@ async function main() {
   for (const v of versiculos) {
     if ((v as any).tema) add([(v as any).tema]);
   }
-  add([
-    'Puedes decir: matutina de hoy. Lección 3. La pregunta 2 de la lección 3. ' +
-      'El versículo central de la lección 2. El título de la lección 3. ' +
-      'El tema de la matutina de hoy. Las notas de la lección 2. ' +
-      'Qué lección se parece a la lección 2. ' +
-      'Busca el versículo que dice, de tal manera amó Dios al mundo. Dónde se cita Juan 3 16. ' +
-      'Versículos relacionados con el versículo central de la lección 2. Preguntas similares. ' +
-      'Siguiente. Anterior. Pausar.',
-    'Es la primera pregunta.',
-    'Revisa el capítulo y el versículo.',
-    'Dime también el número del versículo. Por ejemplo: Salmos 23 1.',
-    'No te entendí. Di ayuda para escuchar los comandos.',
-    'Primero pide una matutina o una lección.',
-    'Abriendo Inicio.',
-    'Abriendo Calendario.',
-    'Abriendo Estudio.',
-    'No hay más resultados.',
-    'Es el primer resultado.',
-    'Es la primera lección.',
-    'No pude cargar la lección. Conéctate a internet una vez.',
-    'Los datos de búsqueda aún no se descargan. Conéctate a internet una vez y vuelve a intentar.',
-    'No encontré la lección de esta semana.',
-    'Te escucho. Di lo que quieres escuchar, o di ayuda.',
-    'Dime qué cita busco. Por ejemplo: dónde se cita Juan 3 16.',
-    'Dime de qué versículo. Por ejemplo: versículos relacionados a Juan 3 16.',
-    'Primero abre una lección, y luego te busco preguntas similares.',
-  ]);
+  // Frases fijas del asistente (las mismas que usa la app).
+  add(frasesFijas());
 
   const items = [...textos].map((texto) => ({ texto, hash: sha1(texto) }));
   mkdirSync(OUTDIR, { recursive: true });
   const pendientes = items
-    .filter((it) => !existsSync(path.join(OUTDIR, `${it.hash}.mp3`)))
+    // Un archivo vacío es un intento fallido: se vuelve a generar.
+    .filter((it) => {
+      const f = path.join(OUTDIR, `${it.hash}.mp3`);
+      return !existsSync(f) || statSync(f).size === 0;
+    })
     .slice(0, LIMIT);
 
   console.log(
@@ -144,6 +124,7 @@ async function main() {
         ok++;
       } catch (e) {
         fail++;
+        rmSync(out, { force: true }); // no dejar un mp3 vacío o a medias
         console.error('FALLO', it.hash, String((e as Error).message).slice(0, 90));
       }
       if ((ok + fail) % 50 === 0) console.log(`  progreso ${ok + fail}/${pendientes.length}`);

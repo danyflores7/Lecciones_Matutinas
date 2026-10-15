@@ -34,6 +34,7 @@ export type VersiculoDia = {
   versiculo_fin: number | null;
   texto: string | null;
   semestre: string;
+  nota?: string | null; // apunte del cuaderno para ese día (puede faltar)
 };
 
 export async function getVersiculoPorFecha(fecha: string): Promise<VersiculoDia | null> {
