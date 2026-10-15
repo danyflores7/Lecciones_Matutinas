@@ -31,6 +31,8 @@ const K = {
 
 let store: Store | null = null;
 let cargando: Promise<Store | null> | null = null;
+// De dónde salió el contenido en memoria y de qué fecha es (para "Acerca de").
+let origen: { fuente: 'sincronizado' | 'incluido'; fecha: string } | null = null;
 
 async function leerJSON<T>(clave: string): Promise<T | null> {
   try {
@@ -75,6 +77,9 @@ export async function cargarStore(): Promise<Store | null> {
           preguntas: incluido.preguntas,
           citas: incluido.citas,
         };
+    origen = guardadoVigente
+      ? { fuente: 'sincronizado', fecha: meta?.sincronizado ?? '' }
+      : { fuente: 'incluido', fecha: incluido.generado };
     cargando = null;
     return store;
   })();
@@ -108,6 +113,25 @@ export async function sincronizarContenido(): Promise<void> {
     ),
   ]);
   store = { versiculos, lecciones, preguntas, citas };
+  origen = { fuente: 'sincronizado', fecha: new Date().toISOString() };
+}
+
+// Resumen del contenido para la pantalla "Acerca de la app" (soporte).
+export async function infoContenido(): Promise<{
+  fuente: 'sincronizado' | 'incluido';
+  fecha: string;
+  matutinas: number;
+  conNota: number;
+  lecciones: number;
+}> {
+  const s = await cargarStore();
+  return {
+    fuente: origen?.fuente ?? 'incluido',
+    fecha: origen?.fecha ?? '',
+    matutinas: s?.versiculos.length ?? 0,
+    conNota: s?.versiculos.filter((v) => v.nota).length ?? 0,
+    lecciones: s?.lecciones.length ?? 0,
+  };
 }
 
 export async function getVersiculosLocal(): Promise<VersiculoDia[]> {

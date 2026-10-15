@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
+import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Network from 'expo-network';
@@ -15,6 +16,9 @@ import {
   type EstadoDescarga,
 } from '../lib/audio';
 import { conEscala, setEscala, TAMANOS, useEscalaTexto } from '../lib/escala';
+import { infoContenido } from '../lib/contenido';
+import { bibliaDisponible } from '../lib/biblia';
+import { fechaDiaMes } from '../lib/fechas';
 
 function mb(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
@@ -22,6 +26,29 @@ function mb(bytes: number): string {
 
 // Confirmación en línea (sin ventana emergente): qué se va a confirmar.
 type Confirmar = null | 'borrar' | 'datosMoviles';
+
+type Diagnostico = { lineas: [string, string][] };
+
+// Datos que el mantenedor necesita cuando alguien reporta un problema.
+async function armarDiagnostico(ocupado: number | null, completo: boolean): Promise<Diagnostico> {
+  const c = await infoContenido();
+  const version = Constants.expoConfig?.version ?? '?';
+  const codigo = Constants.expoConfig?.android?.versionCode ?? '?';
+  const fecha = c.fecha ? `${fechaDiaMes(c.fecha.slice(0, 10))} ${c.fecha.slice(0, 4)}` : '?';
+  return {
+    lineas: [
+      ['Versión', `${version} (${codigo})`],
+      ['Teléfono', `${Platform.OS} ${Platform.Version}`],
+      [
+        'Contenido',
+        `${c.fuente === 'sincronizado' ? 'actualizado' : 'el que trae la app'} · ${fecha}`,
+      ],
+      ['Matutinas', `${c.matutinas} (${c.conNota} con nota) · ${c.lecciones} lecciones`],
+      ['Audio', `${ocupado === null ? '…' : mb(ocupado)}${completo ? ' · completo' : ''}`],
+      ['Biblia para buscar', (await bibliaDisponible().catch(() => false)) ? 'descargada' : 'pendiente'],
+    ],
+  };
+}
 
 export default function Ajustes() {
   const router = useRouter();
@@ -31,10 +58,23 @@ export default function Ajustes() {
   const [borrando, setBorrando] = useState(false);
   const [confirmar, setConfirmar] = useState<Confirmar>(null);
   const [aviso, setAviso] = useState<string | null>(null);
+  const [diag, setDiag] = useState<Diagnostico | null>(null);
 
   const refrescar = async () => {
-    setOcupado(await tamanoOcupado());
-    setCompleto(await esModoCompleto());
+    const bytes = await tamanoOcupado();
+    const todo = await esModoCompleto();
+    setOcupado(bytes);
+    setCompleto(todo);
+    setDiag(await armarDiagnostico(bytes, todo));
+  };
+
+  const enviarDiagnostico = () => {
+    if (!diag) return;
+    const texto = [
+      'Lecciones y Matutinas · datos para soporte',
+      ...diag.lineas.map(([k, v]) => `${k}: ${v}`),
+    ].join('\n');
+    Share.share({ message: texto }).catch(() => {});
   };
 
   useEffect(() => {
@@ -270,6 +310,27 @@ export default function Ajustes() {
         <Ionicons name="chevron-forward" size={18} color="#6E6C66" />
       </Pressable>
 
+      <Text style={[styles.seccion, styles.seccionSep]} accessibilityRole="header">
+        Acerca de la app
+      </Text>
+      <View style={styles.acerca}>
+        {(diag?.lineas ?? []).map(([k, v]) => (
+          <View key={k} style={styles.acercaFila} accessible accessibilityLabel={`${k}: ${v}`}>
+            <Text style={styles.acercaClave}>{k}</Text>
+            <Text style={styles.acercaValor}>{v}</Text>
+          </View>
+        ))}
+      </View>
+      <Pressable
+        style={({ pressed }) => [styles.btnSecundarioAzul, pressed && styles.pressed]}
+        onPress={enviarDiagnostico}
+        accessibilityRole="button"
+        accessibilityHint="Abre WhatsApp, correo u otra app para enviar estos datos a quien te ayuda"
+      >
+        <Ionicons name="paper-plane-outline" size={20} color="#185FA5" />
+        <Text style={styles.btnSecundarioAzulText}>Enviar estos datos (si algo falla)</Text>
+      </Pressable>
+
       <Text style={styles.creditos}>
         Texto bíblico: Reina-Valera 1909 (dominio público) · Referencias cruzadas:
         openbible.info (CC-BY)
@@ -424,6 +485,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   filaAyudaText: { flex: 1, fontSize: 15, fontWeight: '600', color: '#2C2C2A' },
+  acerca: { backgroundColor: '#FFFFFF', borderRadius: 16, paddingHorizontal: 16, paddingVertical: 6 },
+  acercaFila: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#C9C7BE',
+  },
+  acercaClave: { fontSize: 14, color: '#5F5E5A' },
+  acercaValor: { flex: 1, fontSize: 14, fontWeight: '600', color: '#2C2C2A', textAlign: 'right' },
   creditos: { fontSize: 12, color: '#5F5E5A', textAlign: 'center', marginTop: 28, lineHeight: 18 },
   pressed: { opacity: 0.85 },
 });
