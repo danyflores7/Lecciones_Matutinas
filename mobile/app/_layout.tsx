@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { sincronizarContenido } from '../lib/contenido';
 import { descargarSemana, limpiarViejo } from '../lib/audio';
 import { descargarDatos } from '../lib/biblia';
+import { cargarEscala } from '../lib/escala';
 import { prepararAudio } from '../lib/voz';
 
 export default function RootLayout() {
@@ -24,6 +25,7 @@ export default function RootLayout() {
   );
 
   useEffect(() => {
+    cargarEscala();
     prepararAudio();
     (async () => {
       // Al abrir la app (si hay red), baja TODO el texto del año para usarla
@@ -61,7 +63,7 @@ export default function RootLayout() {
       />
       <Stack.Screen
         name="ajustes"
-        options={{ title: 'Audio sin conexión', headerBackTitle: 'Atrás', headerRight: micHeader }}
+        options={{ title: 'Ajustes', headerBackTitle: 'Atrás', headerRight: micHeader }}
       />
       <Stack.Screen name="asistente" options={{ title: 'Modo por voz', headerBackTitle: 'Atrás' }} />
     </Stack>

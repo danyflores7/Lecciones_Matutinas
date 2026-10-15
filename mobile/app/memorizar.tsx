@@ -6,6 +6,7 @@ import { getVersiculoPorFecha, type VersiculoDia } from '../lib/supabase';
 import { fechaHoyISO, fechaLarga } from '../lib/fechas';
 import { guardarCache, leerCache } from '../lib/cache';
 import { getVersiculoLocal } from '../lib/contenido';
+import { conEscala, useEscalaTexto } from '../lib/escala';
 
 type Nivel = 'facil' | 'medio' | 'dificil';
 
@@ -29,6 +30,7 @@ export default function Memorizar() {
   const [loading, setLoading] = useState(true);
   const [nivel, setNivel] = useState<Nivel>('medio');
   const [revelados, setRevelados] = useState<Set<number>>(new Set());
+  const esc = useEscalaTexto();
 
   useEffect(() => {
     (async () => {
@@ -115,7 +117,7 @@ export default function Memorizar() {
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.versiculo}>
+        <Text style={[styles.versiculo, conEscala(styles.versiculo, esc)]}>
           {tokens.map((t, i) => {
             const oculto = ocultos.has(i) && !revelados.has(i);
             return (

@@ -10,6 +10,7 @@ import { segmentosDePregunta, segmentosLeccion } from '../lib/segmentos';
 import { getLeccionLocal } from '../lib/contenido';
 import { getVelocidad, setVelocidad } from '../lib/almacen';
 import { guardarCache, leerCache } from '../lib/cache';
+import { conEscala, useEscalaTexto } from '../lib/escala';
 import { SelectorVelocidad } from '../components/SelectorVelocidad';
 
 type Datos = { leccion: Leccion; preguntas: Pregunta[]; citasTexto: Record<string, string> };
@@ -22,6 +23,7 @@ export default function LeccionDetalle() {
   const [audioActivo, setAudioActivo] = useState<'todo' | number | null>(null);
   const [pausado, setPausado] = useState(false);
   const [velocidad, setVel] = useState(1.0);
+  const esc = useEscalaTexto();
 
   useEffect(() => {
     (async () => {
@@ -123,7 +125,7 @@ export default function LeccionDetalle() {
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       {leccion.serie ? <Text style={styles.serie}>{leccion.serie}</Text> : null}
-      <Text style={styles.titulo}>{leccion.titulo}</Text>
+      <Text style={[styles.titulo, conEscala(styles.titulo, esc)]}>{leccion.titulo}</Text>
       <Text style={styles.meta}>
         Lección {leccion.numero} · {fechaDiaMes(leccion.fecha)}
       </Text>
@@ -135,7 +137,9 @@ export default function LeccionDetalle() {
       <View style={styles.central}>
         <Text style={styles.centralLabel}>Versículo central · {leccion.versiculo_central_cita}</Text>
         {leccion.versiculo_central_texto ? (
-          <Text style={styles.centralTexto}>{leccion.versiculo_central_texto}</Text>
+          <Text style={[styles.centralTexto, conEscala(styles.centralTexto, esc)]}>
+            {leccion.versiculo_central_texto}
+          </Text>
         ) : null}
       </View>
 
@@ -168,14 +172,14 @@ export default function LeccionDetalle() {
 
       <SelectorVelocidad value={velocidad} onChange={cambiarVelocidad} />
 
-      <Text style={styles.intro}>{leccion.introduccion}</Text>
+      <Text style={[styles.intro, conEscala(styles.intro, esc)]}>{leccion.introduccion}</Text>
 
       {preguntas.map((p) => {
         const abiertasDeP = (p.citas ?? []).filter((c) => abiertas.has(`${p.id}|${c}`));
         return (
           <View key={p.id} style={styles.pregunta}>
             <View style={styles.preguntaHead}>
-              <Text style={styles.preguntaTexto}>
+              <Text style={[styles.preguntaTexto, conEscala(styles.preguntaTexto, esc)]}>
                 <Text style={styles.preguntaNum}>{p.orden}. </Text>
                 {p.pregunta}
               </Text>
@@ -212,11 +216,15 @@ export default function LeccionDetalle() {
             {abiertasDeP.map((c) => (
               <View key={c} style={styles.citaBox}>
                 <Text style={styles.citaBoxTitulo}>{c}</Text>
-                <Text style={styles.citaBoxTexto}>{citasTexto[c] ?? 'Texto no disponible.'}</Text>
+                <Text style={[styles.citaBoxTexto, conEscala(styles.citaBoxTexto, esc)]}>
+                  {citasTexto[c] ?? 'Texto no disponible.'}
+                </Text>
               </View>
             ))}
 
-            {p.nota ? <Text style={styles.nota}>{p.nota}</Text> : null}
+            {p.nota ? (
+              <Text style={[styles.nota, conEscala(styles.nota, esc)]}>{p.nota}</Text>
+            ) : null}
           </View>
         );
       })}

@@ -26,6 +26,7 @@ import { getVersiculoPorFecha, type VersiculoDia } from '../../lib/supabase';
 import { fechaHoyISO, fechaLarga, horaTexto } from '../../lib/fechas';
 import { guardarCache, leerCache } from '../../lib/cache';
 import { getVersiculoLocal } from '../../lib/contenido';
+import { conEscala, useEscalaTexto } from '../../lib/escala';
 import {
   getHoraRecordatorio,
   getRecordatorioActivo,
@@ -57,6 +58,7 @@ export default function Inicio() {
   const [racha, setRacha] = useState(0);
   const [hablando, setHablando] = useState(false);
   const [velocidad, setVel] = useState(1.0);
+  const esc = useEscalaTexto();
 
   const cargar = useCallback(async () => {
     const hoy = fechaHoyISO();
@@ -216,11 +218,11 @@ export default function Inicio() {
         ) : verse ? (
           <>
             <Text style={styles.fecha}>{fechaLarga(verse.fecha, verse.dia_semana)}</Text>
-            <Text style={styles.tema}>{verse.tema}</Text>
+            <Text style={[styles.tema, conEscala(styles.tema, esc)]}>{verse.tema}</Text>
 
             <View ref={cardRef} collapsable={false} style={styles.card}>
-              <Text style={styles.cita}>{verse.cita}</Text>
-              <Text style={styles.texto}>{verse.texto ?? ''}</Text>
+              <Text style={[styles.cita, conEscala(styles.cita, esc)]}>{verse.cita}</Text>
+              <Text style={[styles.texto, conEscala(styles.texto, esc)]}>{verse.texto ?? ''}</Text>
               <Text style={styles.cardFooter}>Matutinas · Reina-Valera 1909</Text>
             </View>
 
@@ -253,7 +255,7 @@ export default function Inicio() {
 
             <View style={styles.recordatorio}>
               <View style={styles.recordatorioTexto}>
-                <Text style={styles.recordatorioTitulo}>Recordatorio diario</Text>
+                <Text style={styles.recordatorioTitulo}>Recordatorio de matutina</Text>
                 <Text style={styles.recordatorioSub}>
                   Aviso cada mañana a las {horaTexto(hora.hour, hora.minute)}.
                 </Text>
@@ -269,11 +271,13 @@ export default function Inicio() {
             </View>
 
             <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Abrir ajustes: tamaño de letra y audio sin conexión"
               style={({ pressed }) => [styles.ajustesRow, pressed && styles.btnPressed]}
               onPress={() => router.push('/ajustes')}
             >
-              <Ionicons name="cloud-download-outline" size={20} color="#185FA5" />
-              <Text style={styles.ajustesText}>Audio sin conexión</Text>
+              <Ionicons name="settings-outline" size={20} color="#185FA5" />
+              <Text style={styles.ajustesText}>Ajustes (letra y audio)</Text>
               <Ionicons name="chevron-forward" size={18} color="#B4B2A9" />
             </Pressable>
 

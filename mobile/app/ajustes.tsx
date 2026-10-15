@@ -11,6 +11,7 @@ import {
   tamanoOcupado,
   type EstadoDescarga,
 } from '../lib/audio';
+import { conEscala, setEscala, TAMANOS, useEscalaTexto } from '../lib/escala';
 
 function mb(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
@@ -51,9 +52,39 @@ export default function Ajustes() {
 
   const pct = estado.total ? Math.round((estado.hecho / estado.total) * 100) : 0;
   const yaCompleto = completo || estado.completo;
+  const esc = useEscalaTexto();
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+      <Text style={styles.seccion}>Tamaño de letra</Text>
+      <View style={styles.tamanos}>
+        {TAMANOS.map((t) => (
+          <Pressable
+            key={t.v}
+            onPress={() => setEscala(t.v)}
+            accessibilityRole="button"
+            accessibilityLabel={`Letra ${t.l}`}
+            accessibilityState={{ selected: esc === t.v }}
+            style={({ pressed }) => [
+              styles.tamanoBtn,
+              esc === t.v && styles.tamanoBtnActivo,
+              pressed && styles.pressed,
+            ]}
+          >
+            <Text style={[styles.tamanoText, esc === t.v && styles.tamanoTextActivo]}>
+              {t.l}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+      <View style={styles.muestraCard}>
+        <Text style={[styles.muestraTexto, conEscala(styles.muestraTexto, esc)]}>
+          Porque de tal manera amó Dios al mundo…
+        </Text>
+        <Text style={styles.muestraNota}>Así se verán los versículos y las lecciones.</Text>
+      </View>
+
+      <Text style={styles.seccion}>Audio sin conexión</Text>
       <Text style={styles.desc}>
         La app descarga sola la narración de la semana para escucharla sin internet. Aquí
         puedes bajar todo de una vez o liberar espacio.
@@ -118,6 +149,37 @@ export default function Ajustes() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#F1EFE8' },
   content: { padding: 20, paddingBottom: 48 },
+  seccion: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#185FA5',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 10,
+    marginTop: 8,
+  },
+  tamanos: { flexDirection: 'row', gap: 8 },
+  tamanoBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E3DB',
+    alignItems: 'center',
+  },
+  tamanoBtnActivo: { backgroundColor: '#185FA5', borderColor: '#185FA5' },
+  tamanoText: { fontSize: 13, fontWeight: '600', color: '#5F5E5A' },
+  tamanoTextActivo: { color: '#FFFFFF' },
+  muestraCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    padding: 16,
+    marginTop: 10,
+    marginBottom: 24,
+  },
+  muestraTexto: { fontSize: 18, lineHeight: 28, color: '#042C53', fontFamily: 'serif', fontStyle: 'italic' },
+  muestraNota: { fontSize: 12, color: '#8A887F', marginTop: 8 },
   desc: { fontSize: 15, lineHeight: 22, color: '#5F5E5A', marginBottom: 18 },
   card: {
     flexDirection: 'row',

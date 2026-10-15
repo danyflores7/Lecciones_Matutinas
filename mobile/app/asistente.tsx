@@ -39,6 +39,7 @@ import {
 } from '../lib/segmentos';
 import { continuar, detenerVoz, pausar, reproducirPartes } from '../lib/voz';
 import { getVelocidad } from '../lib/almacen';
+import { conEscala, useEscalaTexto } from '../lib/escala';
 import { fechaDiaMes, fechaHoyISO, sumarDias } from '../lib/fechas';
 
 type Ultimo = { tipo: 'matutina'; fecha: string } | { tipo: 'leccion'; numero: number } | null;
@@ -72,6 +73,7 @@ export default function Asistente() {
   const [texto, setTexto] = useState('');
   const [estado, setEstado] = useState('Toca el micrófono y di lo que quieres escuchar.');
   const [resultados, setResultados] = useState<Resultados | null>(null);
+  const esc = useEscalaTexto();
   const velocidad = useRef(1.0);
   const ultimo = useRef<Ultimo>(null);
   const ultimaCita = useRef<string | null>(null);
@@ -938,11 +940,11 @@ export default function Asistente() {
       {texto ? (
         <View style={styles.oiste}>
           <Text style={styles.oisteLabel}>Escuché:</Text>
-          <Text style={styles.oisteTexto}>“{texto}”</Text>
+          <Text style={[styles.oisteTexto, conEscala(styles.oisteTexto, esc)]}>“{texto}”</Text>
         </View>
       ) : null}
 
-      <Text style={styles.estado} accessibilityLiveRegion="polite">
+      <Text style={[styles.estado, conEscala(styles.estado, esc)]} accessibilityLiveRegion="polite">
         {estado}
       </Text>
 
@@ -959,8 +961,14 @@ export default function Asistente() {
             >
               <Ionicons name="volume-high-outline" size={20} color="#185FA5" />
               <View style={styles.resultadoTextos}>
-                <Text style={styles.resultadoEtiqueta}>{item.etiqueta}</Text>
-                {item.sub ? <Text style={styles.resultadoSub}>{item.sub}</Text> : null}
+                <Text style={[styles.resultadoEtiqueta, conEscala(styles.resultadoEtiqueta, esc)]}>
+                  {item.etiqueta}
+                </Text>
+                {item.sub ? (
+                  <Text style={[styles.resultadoSub, conEscala(styles.resultadoSub, esc)]}>
+                    {item.sub}
+                  </Text>
+                ) : null}
               </View>
             </Pressable>
           ))}
