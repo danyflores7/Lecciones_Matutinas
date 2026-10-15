@@ -3,7 +3,7 @@ import { Pressable } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
-import { sincronizarContenido } from '../lib/contenido';
+import { sincronizarSiHaceFalta } from '../lib/contenido';
 import { descargarSemana, limpiarViejo } from '../lib/audio';
 import { descargarDatos } from '../lib/biblia';
 import { cargarEscala } from '../lib/escala';
@@ -28,10 +28,10 @@ export default function RootLayout() {
     cargarEscala();
     prepararAudio();
     (async () => {
-      // Al abrir la app (si hay red), baja TODO el texto del año para usarla
-      // 100% sin internet después. Silencioso: si falla, se usa lo guardado.
+      // Al abrir la app (si hay red y pasaron 12 h), baja TODO el texto del año
+      // para usarla sin internet. Silencioso: si falla, se usa lo guardado.
       try {
-        await sincronizarContenido();
+        await sincronizarSiHaceFalta();
       } catch {
         // sin red
       }

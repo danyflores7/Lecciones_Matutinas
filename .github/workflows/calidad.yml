@@ -45,7 +45,7 @@ jobs:
       - name: Pruebas unitarias
         run: npm test
 
-      # mobile/android/ no está en git (lo genera expo prebuild): aquí solo se
+      # mobile/android/ no está en git (se mantiene a mano en la Mac, sin prebuild): aquí solo se
       # valida app.json; la comparación con build.gradle ocurre en la máquina
       # donde se compila el AAB.
       - name: Verificar versión (app.json vs build.gradle)

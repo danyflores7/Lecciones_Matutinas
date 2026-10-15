@@ -41,7 +41,7 @@ import { continuar, detenerVoz, pausar, reproducirPartes, useEstadoVoz } from '.
 import { getVelocidad } from '../lib/almacen';
 import { conEscala, useEscalaTexto } from '../lib/escala';
 import { fechaDiaMes, fechaHoyISO, sumarDias } from '../lib/fechas';
-import { F } from '../lib/frases';
+import { anuncioLeccion, anuncioMatutina, F } from '../lib/frases';
 
 type Ultimo = { tipo: 'matutina'; fecha: string } | { tipo: 'leccion'; numero: number } | null;
 type ItemResultado = { etiqueta: string; sub?: string; partes: string[] };
@@ -347,7 +347,7 @@ export default function Asistente() {
     ultimaPregunta.current = null;
     setResultados(null);
     setEstado(`Leyendo la matutina del ${fechaDiaMes(fecha)} · ${v.cita}`);
-    reproducir([`Matutina del ${fechaDiaMes(fecha)}.`, ...segmentosMatutina(v)]);
+    reproducir([anuncioMatutina(fecha), ...segmentosMatutina(v)]);
   };
 
   // Lista de lecciones: local primero, red como respaldo.
@@ -412,7 +412,7 @@ export default function Asistente() {
     setResultados(null);
     setEstado(`Leyendo la lección ${lec.numero}: ${lec.titulo}.`);
     reproducir([
-      `Lección ${lec.numero}. ${lec.titulo}.`,
+      anuncioLeccion(lec.numero, lec.titulo),
       ...segmentosLeccion(datos.leccion, datos.preguntas, datos.citasTexto),
     ]);
   };
@@ -453,7 +453,7 @@ export default function Asistente() {
     setResultados(null);
     setEstado(`Leyendo la lección ${numero}: ${lec.titulo}.`);
     reproducir([
-      `Lección ${numero}. ${lec.titulo}.`,
+      anuncioLeccion(numero, lec.titulo),
       ...segmentosLeccion(datos.leccion, datos.preguntas, datos.citasTexto),
     ]);
   };
@@ -482,7 +482,7 @@ export default function Asistente() {
     setResultados(null);
     setEstado(`Lección ${lec.numero}, pregunta ${orden}.`);
     reproducir([
-      `Lección ${lec.numero}. ${lec.titulo}.`,
+      anuncioLeccion(lec.numero, lec.titulo),
       `Pregunta ${orden}.`,
       ...segmentosDePregunta(p, datos.citasTexto),
     ]);
@@ -522,7 +522,7 @@ export default function Asistente() {
     ultimo.current = { tipo: 'leccion', numero: lec.numero };
     setResultados(null);
     setEstado(`Lección ${lec.numero}: ${lec.titulo}`);
-    reproducir([`Lección ${lec.numero}. ${lec.titulo}.`]);
+    reproducir([anuncioLeccion(lec.numero, lec.titulo)]);
   };
 
   // "El tema de la matutina de hoy" (solo el tema, sin leer el versículo).
@@ -546,7 +546,7 @@ export default function Asistente() {
     ultimaPregunta.current = null;
     setResultados(null);
     setEstado(`Tema del ${fechaDiaMes(fecha)}: ${v.tema} (${v.cita})`);
-    reproducir([`Matutina del ${fechaDiaMes(fecha)}.`, v.tema]);
+    reproducir([anuncioMatutina(fecha), v.tema]);
   };
 
   // "La nota de la matutina de hoy": el apunte del cuaderno para ese día.
@@ -571,11 +571,11 @@ export default function Asistente() {
     setResultados(null);
     if (!v.nota) {
       setEstado(`La matutina del ${fechaDiaMes(fecha)} no tiene nota.`);
-      reproducir([`Matutina del ${fechaDiaMes(fecha)}.`, F.sinNotaMatutina]);
+      reproducir([anuncioMatutina(fecha), F.sinNotaMatutina]);
       return;
     }
     setEstado(`Nota del ${fechaDiaMes(fecha)}: ${v.nota}`);
-    reproducir([`Matutina del ${fechaDiaMes(fecha)}.`, `Nota. ${v.nota}`]);
+    reproducir([anuncioMatutina(fecha), `Nota. ${v.nota}`]);
   };
 
   // "Las notas de la lección 2" (o la nota de una pregunta concreta).
@@ -614,7 +614,7 @@ export default function Asistente() {
         : `Nota de la pregunta ${preguntaNum}, lección ${lec.numero}`
     );
     reproducir([
-      `Lección ${lec.numero}. ${lec.titulo}.`,
+      anuncioLeccion(lec.numero, lec.titulo),
       ...conNota.flatMap((p) => [`Pregunta ${p.orden}.`, `Nota. ${p.nota}`]),
     ]);
   };
@@ -638,7 +638,7 @@ export default function Asistente() {
     const items = sims.map((s) => ({
       etiqueta: `Lección ${s.numero}`,
       sub: s.titulo,
-      partes: [`Lección ${s.numero}. ${s.titulo}.`],
+      partes: [anuncioLeccion(s.numero, s.titulo)],
     }));
     presentar(
       { titulo: `Lecciones parecidas a la lección ${lec.numero}`, items },

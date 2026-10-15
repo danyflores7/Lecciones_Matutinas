@@ -14,7 +14,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
-import { frasesFijas } from '../../mobile/lib/frases';
+import { anuncioLeccion, anuncioMatutina, frasesFijas } from '../../mobile/lib/frases';
 import { segmentosLeccion, segmentosMatutina } from '../../mobile/lib/segmentos';
 
 const execFileP = promisify(execFile);
@@ -71,21 +71,10 @@ async function main() {
     add(segmentosLeccion(l as any, ps as any, citas));
   }
 
-  // Frases del Modo por voz (deben coincidir EXACTO con las de la app para que
-  // el hash calce): anuncios de matutina/lección y avisos fijos del asistente.
-  const MESES = [
-    'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
-    'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
-  ];
-  for (const v of versiculos) {
-    const f = (v as any).fecha as string; // 'YYYY-MM-DD'
-    const dia = Number(f.slice(8, 10));
-    const mes = MESES[Number(f.slice(5, 7)) - 1];
-    add([`Matutina del ${dia} de ${mes}.`]);
-  }
-  for (const l of lecciones) {
-    add([`Lección ${(l as any).numero}. ${(l as any).titulo}.`]);
-  }
+  // Anuncios del Modo por voz ("Matutina del 15 de octubre.", "Lección 3. Título."),
+  // con las mismas funciones que usa la app (lib/frases.ts) para que el hash calce.
+  for (const v of versiculos) add([anuncioMatutina((v as any).fecha)]);
+  for (const l of lecciones) add([anuncioLeccion((l as any).numero, (l as any).titulo)]);
   // Temas de las matutinas (para "el tema de la matutina de hoy").
   for (const v of versiculos) {
     if ((v as any).tema) add([(v as any).tema]);

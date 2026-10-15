@@ -7,7 +7,7 @@
 //   npx tsx tools/calidad/verificar_version.ts          (o: cd mobile && npm run verificar-version)
 //   npx tsx tools/calidad/verificar_version.ts --gradle otra/ruta/build.gradle
 //
-// mobile/android/ la genera `npx expo prebuild` y NO está en git; si no existe
+// mobile/android/ NO está en git (se edita a mano, sin prebuild: ver mantenimiento/decisiones/0004); si no existe
 // (p. ej. en GitHub Actions) solo se valida app.json y se avisa. Con
 // --estricto, que falte build.gradle también es error.
 import { existsSync, readFileSync } from 'node:fs';
@@ -47,7 +47,7 @@ console.log(`${rel(APP_JSON)}: version ${version} · versionCode ${versionCode}`
 
 // --- build.gradle ---
 if (!existsSync(GRADLE)) {
-  const aviso = `No existe ${rel(GRADLE)} (mobile/android/ se genera con "npx expo prebuild" y no está en git).`;
+  const aviso = `No existe ${rel(GRADLE)} (mobile/android/ no está en git: solo existe en la Mac del mantenedor).`;
   if (ESTRICTO) errores.push(aviso);
   else console.log(`AVISO: ${aviso} Solo se validó app.json.`);
 } else {

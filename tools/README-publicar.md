@@ -13,7 +13,7 @@ los comandos sugeridos.
   diga `ANDROID_HOME`, con *Android SDK Build-Tools* (trae `apksigner` y `aapt2`).
 - **Java 17 o más nuevo**. El script usa `JAVA_HOME` si está definida; si no, el
   `java` de la terminal; si tampoco hay, el que trae Android Studio.
-- La carpeta **`mobile/android/`** (no está en git; la genera `npx expo prebuild`).
+- La carpeta **`mobile/android/`** (no está en git: vive solo en la Mac y se edita a mano, sin `expo prebuild`; ver `mantenimiento/decisiones/0004`).
 - La **llave de subida** `Matutinas-upload-key.jks` (por omisión en la raíz del
   repo) y su contraseña en `MATUTINAS_KEY_PASS`.
 - **Internet** para el snapshot de Supabase. Usa `SB_URL`/`SB_KEY` si están

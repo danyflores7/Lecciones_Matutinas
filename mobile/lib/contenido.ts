@@ -134,6 +134,15 @@ export async function infoContenido(): Promise<{
   };
 }
 
+// Sincroniza solo si la última vez fue hace más de `horas`: así no se bajan
+// ~370 KB en cada arranque con datos móviles. Lo nuevo llega en ese plazo.
+export async function sincronizarSiHaceFalta(horas = 12): Promise<void> {
+  const meta = await leerJSON<{ sincronizado?: string }>(K.meta);
+  const ultima = meta?.sincronizado ? Date.parse(meta.sincronizado) : 0;
+  if (Date.now() - ultima < horas * 60 * 60 * 1000) return;
+  await sincronizarContenido();
+}
+
 export async function getVersiculosLocal(): Promise<VersiculoDia[]> {
   return (await cargarStore())?.versiculos ?? [];
 }

@@ -1,3 +1,5 @@
+import { fechaDiaMes } from './fechas';
+
 // Frases FIJAS que dice el Modo por voz. Viven aquí (TS puro) para que la app
 // y el generador de audio (tools/gen-audio) usen EXACTAMENTE el mismo texto:
 // el audio pre-grabado se busca por el hash del texto hablado.
@@ -35,6 +37,11 @@ export const F = {
     buscar: 'Abriendo Buscar.',
   },
 } as const;
+
+// Anuncios con datos: "Matutina del 15 de octubre." / "Lección 3. Título.".
+// El generador graba uno por cada matutina y cada lección.
+export const anuncioMatutina = (fechaISO: string) => `Matutina del ${fechaDiaMes(fechaISO)}.`;
+export const anuncioLeccion = (numero: number, titulo: string) => `Lección ${numero}. ${titulo}.`;
 
 // Todas las frases de arriba, para que el generador las grabe.
 export function frasesFijas(): string[] {

@@ -163,7 +163,7 @@ done
   || error "Faltan las dependencias de mobile/ (no existe mobile/node_modules/.bin/tsc)." "Instálalas con: (cd mobile && npm ci)"
 [ -f "$GRADLE" ] \
   || error "No existe $GRADLE." \
-    "La carpeta mobile/android/ no está en git; se genera con: (cd mobile && npx expo prebuild -p android)"
+    "La carpeta mobile/android/ no está en git y se edita a mano (NO uses expo prebuild: borraría los cambios del manifiesto). Recupérala de tu respaldo."
 
 if [ "$SIN_BUILD" -eq 0 ]; then
   # Llave de subida: ruta y contraseña SOLO desde variables de entorno.
