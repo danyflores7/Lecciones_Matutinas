@@ -27,3 +27,6 @@ CLAVES-keystore.txt
 
 # Documento privado (lleva nombres y firmas) — NUNCA subir
 legal/autorizacion-iglesia.md
+
+# Copias de trabajo temporales de Claude Code
+.claude/worktrees/
