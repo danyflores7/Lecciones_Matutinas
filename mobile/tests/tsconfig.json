@@ -1,0 +1,13 @@
+{
+  // Tipos de las PRUEBAS: los de la app más los de Node (node:test, etc.).
+  // El tsconfig de la app excluye tests/ para no mezclar los tipos de Node con
+  // el código que corre en el teléfono (al redefinir su "exclude" se repite la
+  // lista de expo/tsconfig.base y se agrega "tests").
+  // Revisar con: npx tsc --noEmit -p tests
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "types": ["node"]
+  },
+  "include": ["**/*.ts"],
+  "exclude": []
+}

@@ -33,14 +33,19 @@
     "react-native-web": "^0.21.2"
   },
   "devDependencies": {
+    "@types/node": "^25.9.3",
     "@types/react": "~19.2.2",
+    "tsx": "^4.23.15",
     "typescript": "~6.0.3"
   },
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "test": "tsx --test tests/*.test.ts",
+    "complejidad": "tsx ../tools/calidad/complejidad.ts",
+    "verificar-version": "tsx ../tools/calidad/verificar_version.ts"
   },
   "private": true
 }

@@ -1,0 +1,63 @@
+# Control de calidad continuo de la app (mobile/). En cada push a main y en
+# cada pull request: revisa los tipos, corre las pruebas unitarias (incluye la
+# regresión del Modo por voz y el contrato de textos del audio), verifica que
+# la versión sea consistente y publica el reporte de complejidad ciclomática
+# en el resumen de la ejecución (solo informativo, nunca falla).
+name: Calidad
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: calidad-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  calidad:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Revisar tipos de la app
+        run: npx tsc --noEmit
+
+      - name: Revisar tipos de las pruebas
+        run: npx tsc --noEmit -p tests
+
+      - name: Pruebas unitarias
+        run: npm test
+
+      # mobile/android/ no está en git (lo genera expo prebuild): aquí solo se
+      # valida app.json; la comparación con build.gradle ocurre en la máquina
+      # donde se compila el AAB.
+      - name: Verificar versión (app.json vs build.gradle)
+        run: npm run verificar-version
+
+      - name: Reporte de complejidad ciclomática (informativo)
+        continue-on-error: true
+        run: |
+          npm run --silent complejidad | tee complejidad.txt
+          {
+            echo '## Complejidad ciclomática (McCabe)'
+            echo '```'
+            cat complejidad.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
