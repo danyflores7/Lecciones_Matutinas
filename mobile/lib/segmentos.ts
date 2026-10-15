@@ -9,20 +9,25 @@ import type { Leccion, Pregunta, VersiculoDia } from './supabase';
 //   "Hechos 4:19"        -> "Hechos capítulo 4, versículo 19"
 //   "Santiago 2:14-17"   -> "Santiago capítulo 2, versículos 14 al 17"
 //   "Romanos 5:1, 2"     -> "Romanos capítulo 5, versículos 1 y 2"
+//   "Lucas 1:26-28, 35"  -> "Lucas capítulo 1, versículos 26 al 28 y 35"
+// Convierte TODAS las citas de la cadena ("Apocalipsis 13:16, 17; Apocalipsis 14:9, 10").
+// OJO: cambiar este texto cambia el hash de los audios ya publicados.
 export function citaParaVoz(cita: string): string {
-  return cita.replace(/(\d+):([\d,\-\s]+)/, (_m, cap: string, vspec: string) => {
-    const spec = vspec.trim();
-
-    const rango = spec.match(/^(\d+)\s*-\s*(\d+)$/);
-    if (rango) return `capítulo ${cap}, versículos ${rango[1]} al ${rango[2]}`;
-
-    const lista = spec.split(',').map((s) => s.trim()).filter(Boolean);
-    if (lista.length > 1) {
-      const ultimo = lista.pop();
-      return `capítulo ${cap}, versículos ${lista.join(', ')} y ${ultimo}`;
-    }
-
-    return `capítulo ${cap}, versículo ${spec}`;
+  return cita.replace(/(\d+):(\d+(?:\s*[-,]\s*\d+)*)/g, (_m, cap: string, vspec: string) => {
+    const partes = vspec
+      .split(',')
+      .map((p) => p.trim())
+      .filter(Boolean)
+      .map((p) => {
+        const rango = p.match(/^(\d+)\s*-\s*(\d+)$/);
+        return rango ? `${rango[1]} al ${rango[2]}` : p;
+      });
+    const plural = partes.length > 1 || vspec.includes('-');
+    const lista =
+      partes.length > 1
+        ? `${partes.slice(0, -1).join(', ')} y ${partes[partes.length - 1]}`
+        : partes[0];
+    return `capítulo ${cap}, ${plural ? 'versículos' : 'versículo'} ${lista}`;
   });
 }
 

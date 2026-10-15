@@ -33,6 +33,15 @@ describe('RF-09 · Audio: cita en forma hablada', () => {
     }
   });
 
+  test('RF-09 · citaParaVoz convierte TODAS las citas y mezcla rango con lista', () => {
+    assert.equal(
+      citaParaVoz('Apocalipsis 13:16, 17; Apocalipsis 14:9, 10'),
+      'Apocalipsis capítulo 13, versículos 16 y 17; Apocalipsis capítulo 14, versículos 9 y 10'
+    );
+    assert.equal(citaParaVoz('Lucas 1:26-28, 35'), 'Lucas capítulo 1, versículos 26 al 28 y 35');
+    assert.equal(citaParaVoz('Juan 1:1-3, 10, 14'), 'Juan capítulo 1, versículos 1 al 3, 10 y 14');
+  });
+
   test('RF-09 · citaParaVoz deja igual una cita sin versículo', () => {
     assert.equal(citaParaVoz('Salmos 23'), 'Salmos 23');
   });
