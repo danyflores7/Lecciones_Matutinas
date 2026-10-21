@@ -2,7 +2,9 @@ import { useSyncExternalStore } from 'react';
 import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from 'expo-audio';
 import * as Speech from 'expo-speech';
 
-import { asegurarAudio } from './audio';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+import { asegurarAudio, fuenteDelUltimoAudio, type FuenteAudio } from './audio';
 
 // citaParaVoz se movió a ./segmentos (compartido con el generador de audio).
 // Se re-exporta aquí para no romper las importaciones existentes.
@@ -37,6 +39,35 @@ export type EstadoVoz = 'inactivo' | 'preparando' | 'hablando' | 'pausado';
 let estadoVoz: EstadoVoz = 'inactivo';
 const oyentes = new Set<() => void>();
 
+// Medición de velocidad: milisegundos desde que se pide leer hasta que suena la
+// primera voz. Se guardan las últimas 30 lecturas para "Acerca de la app".
+const K_TIEMPOS = 'voz:tiempos';
+export type Tiempo = { ms: number; fuente: FuenteAudio | 'sistema' | null };
+let inicioLectura = 0;
+let medido = true;
+
+function registrarTiempo(fuente: FuenteAudio | 'sistema' | null) {
+  if (medido || !inicioLectura) return;
+  medido = true;
+  const ms = Date.now() - inicioLectura;
+  AsyncStorage.getItem(K_TIEMPOS)
+    .then((raw) => {
+      const lista: Tiempo[] = raw ? JSON.parse(raw) : [];
+      lista.push({ ms, fuente });
+      return AsyncStorage.setItem(K_TIEMPOS, JSON.stringify(lista.slice(-30)));
+    })
+    .catch(() => {});
+}
+
+export async function leerTiempos(): Promise<Tiempo[]> {
+  try {
+    const raw = await AsyncStorage.getItem(K_TIEMPOS);
+    return raw ? (JSON.parse(raw) as Tiempo[]) : [];
+  } catch {
+    return [];
+  }
+}
+
 function setEstadoVoz(e: EstadoVoz) {
   if (e === estadoVoz) return;
   estadoVoz = e;
@@ -66,6 +97,7 @@ function liberarPlayer() {
 }
 
 function hablarTTS(mi: number, texto: string) {
+  registrarTiempo('sistema');
   setEstadoVoz('hablando');
   Speech.speak(texto, {
     language: 'es-MX',
@@ -123,7 +155,10 @@ async function decir(mi: number) {
     let avanzado = false;
     const sub = p.addListener('playbackStatusUpdate', (st) => {
       if (mi !== token) return;
-      if (st.playing) setEstadoVoz('hablando');
+      if (st.playing) {
+        registrarTiempo(fuenteDelUltimoAudio());
+        setEstadoVoz('hablando');
+      }
       if (st.didJustFinish && !avanzado) {
         avanzado = true;
         sub.remove();
@@ -190,6 +225,8 @@ export function reproducirPartes(
     onParte: opts.onParte,
   };
   setEstadoVoz('preparando');
+  inicioLectura = Date.now();
+  medido = false;
   decir(token);
 }
 

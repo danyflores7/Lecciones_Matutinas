@@ -30,6 +30,17 @@ export async function hashHablado(texto: string): Promise<string> {
   return Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA1, texto.trim());
 }
 
+// De dónde salió el último clip servido (para medir la velocidad de arranque).
+export type FuenteAudio = 'local' | 'incluido' | 'red';
+let ultimaFuente: FuenteAudio | null = null;
+export const fuenteDelUltimoAudio = (): FuenteAudio | null => ultimaFuente;
+
+// Versión "completa": los mp3 viajan DENTRO de la app (assets/audio-v1). Se
+// copian al almacenamiento solo cuando se necesitan (instantáneo, sin internet).
+function incluido(hash: string): File {
+  return new File(Paths.bundle, 'audio-v1', `${hash}.mp3`);
+}
+
 function archivo(hash: string): File {
   return new File(carpeta(), `${hash}.mp3`);
 }
@@ -69,8 +80,20 @@ async function descargarHash(hash: string): Promise<boolean> {
   const part = new File(carpeta(), `${hash}.part`);
   try {
     if (part.exists) part.delete();
-    await File.downloadFileAsync(`${BASE}/${hash}.mp3`, part);
+    // ¿Viene dentro de la app? Se copia en vez de bajarlo.
+    let desdeApp = false;
+    try {
+      const inc = incluido(hash);
+      if (inc.exists) {
+        inc.copy(part);
+        desdeApp = true;
+      }
+    } catch {
+      desdeApp = false;
+    }
+    if (!desdeApp) await File.downloadFileAsync(`${BASE}/${hash}.mp3`, part);
     part.move(f);
+    ultimaFuente = desdeApp ? 'incluido' : 'red';
     return f.exists;
   } catch {
     try {
@@ -111,7 +134,10 @@ export async function asegurarAudio(texto: string, timeoutMs = 3500): Promise<st
   if (!t) return null;
   const hash = await hashHablado(t);
   const f = archivo(hash);
-  if (f.exists) return f.uri;
+  if (f.exists) {
+    ultimaFuente = 'local';
+    return f.uri;
+  }
   if (fallidos.has(hash)) return null; // ya sabemos que no está en el CDN
 
   const bajada = descargaUnica(hash);

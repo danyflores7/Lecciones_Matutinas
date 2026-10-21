@@ -16,6 +16,7 @@ import {
   type EstadoDescarga,
 } from '../lib/audio';
 import { conEscala, setEscala, TAMANOS, useEscalaTexto } from '../lib/escala';
+import { leerTiempos } from '../lib/voz';
 import { infoContenido } from '../lib/contenido';
 import { bibliaDisponible } from '../lib/biblia';
 import { fechaDiaMes } from '../lib/fechas';
@@ -28,6 +29,17 @@ function mb(bytes: number): string {
 type Confirmar = null | 'borrar' | 'datosMoviles';
 
 type Diagnostico = { lineas: [string, string][] };
+
+// "1.2 s en promedio (12 lecturas; 9 incluido, 3 local)" para comparar versiones.
+async function resumenTiempos(): Promise<string> {
+  const t = await leerTiempos();
+  if (!t.length) return 'sin lecturas aún';
+  const prom = t.reduce((a, x) => a + x.ms, 0) / t.length / 1000;
+  const porFuente = new Map<string, number>();
+  for (const x of t) porFuente.set(x.fuente ?? '?', (porFuente.get(x.fuente ?? '?') ?? 0) + 1);
+  const det = [...porFuente].map(([f, n]) => `${n} ${f}`).join(', ');
+  return `${prom.toFixed(1)} s en promedio (${t.length} lecturas: ${det})`;
+}
 
 // Datos que el mantenedor necesita cuando alguien reporta un problema.
 async function armarDiagnostico(ocupado: number | null, completo: boolean): Promise<Diagnostico> {
@@ -45,6 +57,7 @@ async function armarDiagnostico(ocupado: number | null, completo: boolean): Prom
       ],
       ['Matutinas', `${c.matutinas} (${c.conNota} con nota) · ${c.lecciones} lecciones`],
       ['Audio', `${ocupado === null ? '…' : mb(ocupado)}${completo ? ' · completo' : ''}`],
+      ['Arranque de la voz', await resumenTiempos()],
       ['Biblia para buscar', (await bibliaDisponible().catch(() => false)) ? 'descargada' : 'pendiente'],
     ],
   };
