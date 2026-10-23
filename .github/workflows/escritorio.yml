@@ -4,6 +4,10 @@
 # poner una etiqueta que empiece con "escritorio-" (por ejemplo escritorio-1.13.1).
 # Los instaladores quedan como "artifacts" de la ejecución (se descargan desde
 # la página de la ejecución, solo para quien tenga acceso al repositorio).
+#
+# Por qué "preparar" va aparte: el repositorio tiene carpetas viejas con "\" en el
+# nombre (Matitinas_primer_semestre_2026\) que Windows no puede crear, así que la
+# máquina Windows NO descarga el repositorio: recibe la carpeta desktop/ ya lista.
 name: Programa de escritorio
 
 on:
@@ -20,25 +24,12 @@ env:
   EXPO_PUBLIC_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ5dWdoZ2VremZ0c2drZmN1eWVxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE2MzQ2NjcsImV4cCI6MjA5NzIxMDY2N30.SovowH4a4IW76P4oLIj6vvzFDqDbCMQtzrjY8o0JwUk
 
 jobs:
-  windows:
-    runs-on: windows-latest
-    env:
-      # Hay carpetas viejas con "\" en el nombre; Windows no las admite y git
-      # se niega a descargarlas. Se relaja esa protección (solo aquí, y esas
-      # carpetas ni se escriben gracias a la descarga parcial de abajo).
-      GIT_CONFIG_COUNT: '1'
-      GIT_CONFIG_KEY_0: core.protectNTFS
-      GIT_CONFIG_VALUE_0: 'false'
+  preparar:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0 # necesita el branch "audio"
-          # Solo lo necesario: en el repo hay carpetas viejas con "\" en el nombre
-          # que Windows no puede crear (Matitinas_primer_semestre_2026\).
-          sparse-checkout: |
-            mobile
-            desktop
-            tools
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -55,6 +46,34 @@ jobs:
       - name: Preparar (app web + audio + Biblia)
         working-directory: desktop
         run: node scripts/preparar.mjs
+      - name: Empaquetar la carpeta desktop/ ya preparada
+        run: tar -C desktop --exclude=node_modules -cf desktop.tar .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-preparado
+          path: desktop.tar
+          compression-level: 0
+
+  windows:
+    needs: preparar
+    runs-on: windows-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: desktop-preparado
+      - name: Desempaquetar
+        shell: bash
+        run: |
+          mkdir desktop
+          tar -xf desktop.tar -C desktop
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - name: Dependencias
+        working-directory: desktop
+        run: npm ci
       - name: Compilar instalador de Windows
         working-directory: desktop
         run: npx electron-builder --win --x64
@@ -76,33 +95,24 @@ jobs:
           compression-level: 0
 
   mac:
+    needs: preparar
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
         with:
-          fetch-depth: 0
-          # Solo lo necesario: en el repo hay carpetas viejas con "\" en el nombre
-          # que Windows no puede crear (Matitinas_primer_semestre_2026\).
-          sparse-checkout: |
-            mobile
-            desktop
-            tools
+          name: desktop-preparado
+      - name: Desempaquetar
+        run: |
+          mkdir desktop
+          tar -xf desktop.tar -C desktop
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: |
-            mobile/package-lock.json
-            desktop/package-lock.json
-      - name: Dependencias de la app
-        working-directory: mobile
-        run: npm ci
-      - name: Dependencias del programa de escritorio
+          cache-dependency-path: desktop/package-lock.json
+      - name: Dependencias
         working-directory: desktop
         run: npm ci
-      - name: Preparar (app web + audio + Biblia)
-        working-directory: desktop
-        run: node scripts/preparar.mjs
       - name: Compilar instaladores de Mac
         working-directory: desktop
         run: npx electron-builder --mac --arm64 --x64
