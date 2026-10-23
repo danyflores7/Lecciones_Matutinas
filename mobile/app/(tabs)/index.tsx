@@ -276,7 +276,7 @@ export default function Inicio() {
           </Pressable>
         ) : null}
 
-        {!loading ? (
+        {!loading && Platform.OS !== 'web' ? (
           <View style={styles.recordatorio}>
             <View style={styles.recordatorioFila}>
               <View style={styles.recordatorioTexto}>
@@ -317,7 +317,7 @@ export default function Inicio() {
           </View>
         ) : null}
 
-        {showPicker ? (
+        {showPicker && Platform.OS !== 'web' ? (
           Platform.OS === 'ios' ? (
             <View style={styles.pickerIOS}>
               <DateTimePicker value={horaDate} mode="time" display="spinner" onChange={onChangeHora} />

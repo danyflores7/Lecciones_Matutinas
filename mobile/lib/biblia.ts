@@ -1,13 +1,9 @@
-import { Directory, File, Paths } from 'expo-file-system';
-
+import { descargarDatos, existeDato, leerDatoJSON } from './datos';
 import { anclaDeCita, indiceDeLibro, LIBROS, normalizar, parseCita } from './citas';
 
 // Biblia RV1909 completa + datos pre-calculados (versículos relacionados y
 // preguntas similares), alojados en el CDN y descargados UNA vez al teléfono.
 // Después todo funciona offline: la app solo lee estos archivos locales.
-
-const BASE = 'https://cdn.jsdelivr.net/gh/danyflores7/Lecciones_Matutinas@audio/datos/v1';
-const ARCHIVOS = ['biblia.json', 'relacionados_versiculos.json', 'relacionadas_preguntas.json'];
 
 type Biblia = { version: number; libros: { n: string; c: string[][] }[] };
 type RelVers = {
@@ -26,39 +22,7 @@ export type PreguntaSimilar = {
 };
 type RelPreg = { version: number; similares: Record<string, PreguntaSimilar[]> };
 
-function carpeta(): Directory {
-  const d = new Directory(Paths.document, 'datos', 'v1');
-  try {
-    if (!d.exists) d.create({ intermediates: true });
-  } catch {
-    // ya existía
-  }
-  return d;
-}
-
-// Descarga (si faltan) los archivos de datos. Silencioso e idempotente.
-export async function descargarDatos(): Promise<void> {
-  const dir = carpeta();
-  for (const nombre of ARCHIVOS) {
-    const f = new File(dir, nombre);
-    if (f.exists) continue;
-    try {
-      await File.downloadFileAsync(`${BASE}/${nombre}`, f);
-    } catch {
-      // sin red o aún no publicado; se reintenta en el próximo arranque
-    }
-  }
-}
-
-async function leerJSON<T>(nombre: string): Promise<T | null> {
-  try {
-    const f = new File(carpeta(), nombre);
-    if (!f.exists) return null;
-    return JSON.parse(await f.text()) as T;
-  } catch {
-    return null;
-  }
-}
+export { descargarDatos };
 
 // --- Biblia completa (carga perezosa; ~31 mil versículos) ---
 let biblia: Biblia | null = null;
@@ -68,7 +32,7 @@ async function cargarBiblia(): Promise<Biblia | null> {
   if (biblia) return biblia;
   if (cargandoBiblia) return cargandoBiblia;
   cargandoBiblia = (async () => {
-    biblia = await leerJSON<Biblia>('biblia.json');
+    biblia = await leerDatoJSON<Biblia>('biblia.json');
     cargandoBiblia = null;
     return biblia;
   })();
@@ -76,7 +40,7 @@ async function cargarBiblia(): Promise<Biblia | null> {
 }
 
 export async function bibliaDisponible(): Promise<boolean> {
-  return new File(carpeta(), 'biblia.json').exists;
+  return existeDato('biblia.json');
 }
 
 // Texto de un versículo por cita ("Juan 3:16"; en rangos usa el primero).
@@ -137,7 +101,7 @@ let anclasRelVers: Map<string, string> | null = null;
 
 async function cargarRelVers(): Promise<RelVers | null> {
   if (!relVers) {
-    relVers = await leerJSON<RelVers>('relacionados_versiculos.json');
+    relVers = await leerDatoJSON<RelVers>('relacionados_versiculos.json');
     if (relVers) {
       anclasRelVers = new Map();
       for (const k of Object.keys(relVers.relacionados)) {
@@ -164,7 +128,7 @@ export async function versiculosRelacionados(
 let relPreg: RelPreg | null = null;
 
 async function cargarRelPreg(): Promise<RelPreg | null> {
-  if (!relPreg) relPreg = await leerJSON<RelPreg>('relacionadas_preguntas.json');
+  if (!relPreg) relPreg = await leerDatoJSON<RelPreg>('relacionadas_preguntas.json');
   return relPreg;
 }
 

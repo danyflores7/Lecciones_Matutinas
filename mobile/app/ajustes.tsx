@@ -50,7 +50,7 @@ async function armarDiagnostico(ocupado: number | null, completo: boolean): Prom
   return {
     lineas: [
       ['Versión', `${version} (${codigo})`],
-      ['Teléfono', `${Platform.OS} ${Platform.Version}`],
+      [Platform.OS === 'web' ? 'Equipo' : 'Teléfono', Platform.OS === 'web' ? (window.matutinasDesktop?.plataforma ?? 'navegador') : `${Platform.OS} ${Platform.Version}`],
       [
         'Contenido',
         `${c.fuente === 'sincronizado' ? 'actualizado' : 'el que trae la app'} · ${fecha}`,
@@ -176,6 +176,16 @@ export default function Ajustes() {
         <Text style={styles.muestraNota}>Así se verán los versículos y las lecciones.</Text>
       </View>
 
+      {Platform.OS === 'web' ? (
+        <>
+          <Text style={styles.seccion} accessibilityRole="header">Audio</Text>
+          <View style={styles.completoCard}>
+            <Ionicons name="checkmark-circle" size={24} color="#1B7A3D" />
+            <Text style={styles.completoTexto}>La voz de Jorge ya viene incluida en el programa</Text>
+          </View>
+        </>
+      ) : (
+        <>
       <Text style={styles.seccion} accessibilityRole="header">Audio sin conexión</Text>
       <Text style={styles.desc}>
         La app descarga sola la narración de la semana para escucharla sin internet. Aquí
@@ -303,6 +313,9 @@ export default function Ajustes() {
             {borrando ? 'Borrando…' : sinAudios ? 'No hay audios que borrar' : 'Borrar audios descargados'}
           </Text>
         </Pressable>
+      )}
+
+        </>
       )}
 
       {aviso ? (

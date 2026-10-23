@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { captureRef } from 'react-native-view-shot';
@@ -65,7 +65,19 @@ export function VistaMatutina({
     setVelocidad(v);
   }, []);
 
+  const [copiado, setCopiado] = useState(false);
   const compartir = useCallback(async () => {
+    if (Platform.OS === 'web') {
+      // Escritorio: se copia el versículo para pegarlo donde se quiera.
+      try {
+        await navigator.clipboard.writeText(`${verse.cita}\n${verse.texto ?? ''}\n— Reina-Valera 1909`);
+        setCopiado(true);
+        setTimeout(() => setCopiado(false), 2500);
+      } catch {
+        onError?.('No se pudo copiar el versículo.');
+      }
+      return;
+    }
     try {
       const uri = await captureRef(cardRef, { format: 'png', quality: 1 });
       if (await Sharing.isAvailableAsync()) {
@@ -76,7 +88,7 @@ export function VistaMatutina({
     } catch {
       onError?.('No se pudo compartir el versículo.');
     }
-  }, [onError]);
+  }, [onError, verse]);
 
   return (
     <View>
@@ -133,10 +145,16 @@ export function VistaMatutina({
           style={({ pressed }) => [styles.btnSecundario, styles.btnFlex, pressed && styles.pressed]}
           onPress={compartir}
           accessibilityRole="button"
-          accessibilityLabel="Compartir el versículo como imagen"
+          accessibilityLabel={Platform.OS === 'web' ? 'Copiar el versículo' : 'Compartir el versículo como imagen'}
         >
-          <Ionicons name="share-social-outline" size={20} color="#185FA5" />
-          <Text style={styles.btnSecundarioText}>Compartir</Text>
+          <Ionicons
+            name={Platform.OS === 'web' ? (copiado ? 'checkmark' : 'copy-outline') : 'share-social-outline'}
+            size={20}
+            color="#185FA5"
+          />
+          <Text style={styles.btnSecundarioText}>
+            {Platform.OS === 'web' ? (copiado ? 'Copiado' : 'Copiar') : 'Compartir'}
+          </Text>
         </Pressable>
       </View>
     </View>

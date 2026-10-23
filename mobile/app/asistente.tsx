@@ -1,5 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Linking,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -47,6 +57,10 @@ type Ultimo = { tipo: 'matutina'; fecha: string } | { tipo: 'leccion'; numero: n
 type ItemResultado = { etiqueta: string; sub?: string; partes: string[] };
 type Resultados = { titulo: string; items: ItemResultado[]; pie?: string };
 type Permiso = 'ok' | 'pedir' | 'bloqueado' | null;
+
+// En el programa de escritorio (Electron) no hay reconocimiento de voz: los
+// comandos se ESCRIBEN y funcionan igual que si se dictaran.
+const SIN_MIC = Platform.OS === 'web' && typeof window !== 'undefined' && !!window.matutinasDesktop;
 
 // Errores del reconocedor de voz (vienen en inglés) en palabras simples.
 function errorDeMicrofono(codigo?: string): string | null {
@@ -114,6 +128,7 @@ export default function Asistente() {
   const cerrarMic = () => {
     finalRecibido.current = true;
     interimRef.current = '';
+    if (SIN_MIC) return;
     ExpoSpeechRecognitionModule.stop();
   };
   const nuevoComando = () => {
@@ -124,6 +139,7 @@ export default function Asistente() {
 
   // Vuelve a abrir el micrófono (modo conversación manos libres).
   const escucharAuto = () => {
+    if (SIN_MIC) return;
     if (!enfocado.current) return; // nunca escuchar tapado por otra pantalla
     setTexto('');
     interimRef.current = '';
@@ -138,6 +154,10 @@ export default function Asistente() {
   useEffect(() => {
     (async () => {
       velocidad.current = await getVelocidad();
+      if (SIN_MIC) {
+        setPermiso('ok');
+        return;
+      }
       // Manos libres desde que se abre la pantalla: saluda y queda escuchando.
       // Si aún no hay permiso, primero se explica para qué es (no se pide en frío).
       const actual = await ExpoSpeechRecognitionModule.getPermissionsAsync();
@@ -152,7 +172,7 @@ export default function Asistente() {
     return () => {
       gen.current += 1; // invalida handlers pendientes
       detenerVoz();
-      ExpoSpeechRecognitionModule.stop();
+      if (!SIN_MIC) ExpoSpeechRecognitionModule.stop();
     };
   }, []);
 
@@ -246,7 +266,20 @@ export default function Asistente() {
     reproducirPartes(partes, { rate: velocidad.current, onFin: () => reArmar(g) });
   };
 
+  // Escritorio: el comando escrito se interpreta igual que uno dictado.
+  const [escrito, setEscrito] = useState('');
+  const enviarEscrito = () => {
+    const t = escrito.trim();
+    if (!t) return;
+    setEscrito('');
+    setTexto(t);
+    nuevoComando();
+    pausado.current = false;
+    manejar(t);
+  };
+
   const escuchar = async () => {
+    if (SIN_MIC) return;
     nuevoComando(); // invalida cualquier handler pendiente
     // Si hay lectura en PAUSA, se conserva (para poder decir "leer" y seguir);
     // si algo está sonando, se detiene para escuchar al usuario.
@@ -1012,7 +1045,7 @@ export default function Asistente() {
       keyboardShouldPersistTaps="handled"
     >
       <Text style={styles.ayuda}>
-        Toca el micrófono y di, por ejemplo: “la matutina de hoy”, “lección 3”, “busca el
+        {SIN_MIC ? 'Escribe' : 'Toca el micrófono y di'}, por ejemplo: “la matutina de hoy”, “lección 3”, “busca el
         versículo que dice…”, “¿dónde se cita Juan 3:16?” o “preguntas similares”.
       </Text>
 
@@ -1039,6 +1072,34 @@ export default function Asistente() {
         </View>
       ) : null}
 
+      {SIN_MIC ? (
+        <View style={styles.escribir}>
+          <Text style={styles.escribirTitulo}>Escribe lo que quieres escuchar</Text>
+          <View style={styles.escribirFila}>
+            <TextInput
+              value={escrito}
+              onChangeText={setEscrito}
+              onSubmitEditing={enviarEscrito}
+              placeholder="la matutina de hoy"
+              placeholderTextColor="#6E6C66"
+              returnKeyType="send"
+              style={styles.escribirInput}
+              accessibilityLabel="Escribe un comando, por ejemplo: la matutina de hoy"
+              autoCorrect={false}
+            />
+            <Pressable
+              onPress={enviarEscrito}
+              style={({ pressed }) => [styles.escribirBtn, pressed && styles.pressed]}
+              accessibilityRole="button"
+              accessibilityLabel="Enviar el comando"
+            >
+              <Text style={styles.escribirBtnText}>Enviar</Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
+
+      {SIN_MIC ? null : (
       <Pressable
         onPress={escuchar}
         accessibilityRole="button"
@@ -1051,9 +1112,12 @@ export default function Asistente() {
       >
         <Ionicons name={escuchando ? 'mic' : 'mic-outline'} size={72} color="#FFFFFF" />
       </Pressable>
+      )}
+      {SIN_MIC ? null : (
       <Text style={styles.micLabel} accessibilityLiveRegion="polite">
         {escuchando ? 'Escuchando… habla ahora' : 'Tocar para hablar'}
       </Text>
+      )}
       {estadoVoz === 'preparando' ? (
         <View style={styles.preparando}>
           <ActivityIndicator color="#185FA5" />
@@ -1184,6 +1248,28 @@ const styles = StyleSheet.create({
   resultadoEtiqueta: { fontSize: 17, fontWeight: '600', color: '#042C53' },
   resultadoSub: { fontSize: 14, color: '#5F5E5A', marginTop: 2 },
   resultadosPie: { fontSize: 12, color: '#5F5E5A', textAlign: 'center', marginTop: 6 },
+  escribir: { alignSelf: 'stretch', marginBottom: 8 },
+  escribirTitulo: { fontSize: 15, fontWeight: '600', color: '#042C53', marginBottom: 8 },
+  escribirFila: { flexDirection: 'row', gap: 8 },
+  escribirInput: {
+    flex: 1,
+    minHeight: 52,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#6E6C66',
+    paddingHorizontal: 14,
+    fontSize: 17,
+    color: '#2C2C2A',
+  },
+  escribirBtn: {
+    minHeight: 52,
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+    borderRadius: 14,
+    backgroundColor: '#185FA5',
+  },
+  escribirBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
   permisoCard: {
     alignSelf: 'stretch',
     alignItems: 'center',

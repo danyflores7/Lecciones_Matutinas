@@ -1,10 +1,10 @@
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
 import { marcarBienvenidaVista } from '../lib/progreso';
 
-const PASOS: { icono: keyof typeof Ionicons.glyphMap; titulo: string; texto: string }[] = [
+const PASOS_TELEFONO: { icono: keyof typeof Ionicons.glyphMap; titulo: string; texto: string }[] = [
   {
     icono: 'sunny-outline',
     titulo: 'La matutina de cada día',
@@ -36,6 +36,26 @@ const PASOS: { icono: keyof typeof Ionicons.glyphMap; titulo: string; texto: str
       'El texto de todo el año ya viene en la app. En Ajustes puedes cambiar el tamaño de la letra y descargar el audio para escucharlo sin conexión.',
   },
 ];
+
+// Programa de escritorio (Mac y Windows): sin micrófono; los comandos se escriben.
+const PASOS_ESCRITORIO: typeof PASOS_TELEFONO = [
+  PASOS_TELEFONO[0],
+  PASOS_TELEFONO[1],
+  {
+    icono: 'chatbubble-ellipses-outline',
+    titulo: 'Modo por voz (escribiendo)',
+    texto:
+      'Escribe lo que quieres escuchar y la voz de Jorge te lo lee. Por ejemplo: "la matutina de hoy", "la pregunta 3 de la lección 2", "dónde se cita Juan 3 16" o "ayuda".',
+  },
+  PASOS_TELEFONO[3],
+  {
+    icono: 'cloud-offline-outline',
+    titulo: 'Funciona sin internet',
+    texto:
+      'El texto de todo el año, la voz de Jorge y la Biblia ya vienen en el programa. En Ajustes puedes cambiar el tamaño de la letra.',
+  },
+];
+const PASOS = Platform.OS === 'web' ? PASOS_ESCRITORIO : PASOS_TELEFONO;
 
 export default function Bienvenida() {
   const router = useRouter();

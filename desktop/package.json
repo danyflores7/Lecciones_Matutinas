@@ -1,0 +1,71 @@
+{
+  "name": "lecciones-y-matutinas",
+  "productName": "Lecciones y Matutinas",
+  "version": "1.13.1",
+  "description": "Lecciones y Matutinas para computadora (Mac y Windows)",
+  "author": "Iglesia de Cristo Restaurada del 7mo Día",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "preparar": "node scripts/preparar.mjs",
+    "iniciar": "electron .",
+    "dist:mac": "node scripts/preparar.mjs && electron-builder --mac --arm64 --x64",
+    "dist:win": "node scripts/preparar.mjs && electron-builder --win --x64",
+    "prueba": "node scripts/prueba_humo.mjs"
+  },
+  "build": {
+    "appId": "com.appiglesia.matutinas.escritorio",
+    "productName": "Lecciones y Matutinas",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "recursos",
+        "to": "recursos"
+      }
+    ],
+    "compression": "normal",
+    "mac": {
+      "category": "public.app-category.education",
+      "target": [
+        {
+          "target": "dmg"
+        },
+        {
+          "target": "zip"
+        }
+      ],
+      "icon": "build/icon.png",
+      "identity": "-",
+      "hardenedRuntime": false
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis"
+        }
+      ],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "language": "3082"
+    },
+    "artifactName": "Lecciones-y-Matutinas-${version}-${os}-${arch}.${ext}"
+  },
+  "devDependencies": {
+    "electron": "^38.0.0",
+    "electron-builder": "^26.0.0",
+    "puppeteer-core": "^24.0.0"
+  }
+}

@@ -1,0 +1,105 @@
+# Compila el programa de escritorio (Windows y Mac) en máquinas reales y le
+# corre la prueba de humo (abre el programa y lo maneja como una persona).
+# Se dispara a mano (Actions > "Programa de escritorio" > Run workflow) o al
+# poner una etiqueta que empiece con "escritorio-" (por ejemplo escritorio-1.13.1).
+# Los instaladores quedan como "artifacts" de la ejecución (se descargan desde
+# la página de la ejecución, solo para quien tenga acceso al repositorio).
+name: Programa de escritorio
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['escritorio-*']
+
+permissions:
+  contents: read
+
+env:
+  # Llave PÚBLICA de solo lectura (la misma que lleva la app).
+  EXPO_PUBLIC_SUPABASE_URL: https://vyughgekzftsgkfcuyeq.supabase.co
+  EXPO_PUBLIC_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ5dWdoZ2VremZ0c2drZmN1eWVxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE2MzQ2NjcsImV4cCI6MjA5NzIxMDY2N30.SovowH4a4IW76P4oLIj6vvzFDqDbCMQtzrjY8o0JwUk
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # necesita el branch "audio"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            mobile/package-lock.json
+            desktop/package-lock.json
+      - name: Dependencias de la app
+        working-directory: mobile
+        run: npm ci
+      - name: Dependencias del programa de escritorio
+        working-directory: desktop
+        run: npm ci
+      - name: Preparar (app web + audio + Biblia)
+        working-directory: desktop
+        run: node scripts/preparar.mjs
+      - name: Compilar instalador de Windows
+        working-directory: desktop
+        run: npx electron-builder --win --x64
+      - name: Prueba de humo (abre el programa de verdad)
+        working-directory: desktop
+        env:
+          SIN_AUDIO: '1'
+          CARPETA_CAPTURAS: ${{ github.workspace }}/capturas-windows
+        run: node scripts/prueba_humo.mjs "dist/win-unpacked/Lecciones y Matutinas.exe"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: capturas-windows
+          path: capturas-windows
+      - uses: actions/upload-artifact@v4
+        with:
+          name: instalador-windows
+          path: desktop/dist/*.exe
+          compression-level: 0
+
+  mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            mobile/package-lock.json
+            desktop/package-lock.json
+      - name: Dependencias de la app
+        working-directory: mobile
+        run: npm ci
+      - name: Dependencias del programa de escritorio
+        working-directory: desktop
+        run: npm ci
+      - name: Preparar (app web + audio + Biblia)
+        working-directory: desktop
+        run: node scripts/preparar.mjs
+      - name: Compilar instaladores de Mac
+        working-directory: desktop
+        run: npx electron-builder --mac --arm64 --x64
+      - name: Prueba de humo (abre el programa de verdad)
+        working-directory: desktop
+        env:
+          SIN_AUDIO: '1'
+          CARPETA_CAPTURAS: ${{ github.workspace }}/capturas-mac
+        run: node scripts/prueba_humo.mjs "dist/mac-arm64/Lecciones y Matutinas.app/Contents/MacOS/Lecciones y Matutinas"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: capturas-mac
+          path: capturas-mac
+      - uses: actions/upload-artifact@v4
+        with:
+          name: instalador-mac
+          path: desktop/dist/*.dmg
+          compression-level: 0

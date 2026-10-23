@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Pressable } from 'react-native';
+import { Platform, Pressable, View } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -25,6 +25,14 @@ export default function RootLayout() {
   );
 
   useEffect(() => {
+    // Escritorio/web: detener el audio justo después de empezarlo hace que el
+    // navegador avise "play() interrumpido por pause()". No es un error real.
+    if (Platform.OS === 'web') {
+      const ignorar = (e: PromiseRejectionEvent) => {
+        if ((e.reason as Error | undefined)?.name === 'AbortError') e.preventDefault();
+      };
+      window.addEventListener('unhandledrejection', ignorar);
+    }
     cargarEscala();
     prepararAudio();
     (async () => {
@@ -43,7 +51,7 @@ export default function RootLayout() {
     })();
   }, []);
 
-  return (
+  const pila = (
     <Stack
       screenOptions={{
         headerStyle: { backgroundColor: '#F1EFE8' },
@@ -76,5 +84,13 @@ export default function RootLayout() {
       <Stack.Screen name="bienvenida" options={{ title: 'Bienvenida', headerBackTitle: 'Atrás' }} />
       <Stack.Screen name="asistente" options={{ title: 'Modo por voz', headerBackTitle: 'Atrás' }} />
     </Stack>
+  );
+
+  // En escritorio (ventana ancha) la app se centra con un ancho cómodo de lectura.
+  if (Platform.OS !== 'web') return pila;
+  return (
+    <View style={{ flex: 1, alignItems: 'center', backgroundColor: '#E4E1D6' }}>
+      <View style={{ flex: 1, width: '100%', maxWidth: 760, backgroundColor: '#F1EFE8' }}>{pila}</View>
+    </View>
   );
 }

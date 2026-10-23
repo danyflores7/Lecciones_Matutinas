@@ -30,3 +30,8 @@ legal/autorizacion-iglesia.md
 
 # Copias de trabajo temporales de Claude Code
 .claude/worktrees/
+
+# Programa de escritorio: lo que se genera al preparar/compilar
+desktop/node_modules/
+desktop/recursos/
+desktop/dist/
