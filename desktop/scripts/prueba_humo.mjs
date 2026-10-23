@@ -114,11 +114,18 @@ try {
   navegador = b;
   const errores = [];
   p.on('pageerror', (e) => errores.push(String(e.message).slice(0, 200)));
-  p.on('requestfailed', (r) => console.log(`  ⚠ petición fallida: ${r.url().slice(0, 120)} (${r.failure()?.errorText})`));
-  p.on('response', (r) => r.status() >= 400 && console.log(`  ⚠ respuesta ${r.status()}: ${r.url().slice(0, 120)}`));
+  const dudosos = [];
+  p.on('response', (r) => {
+    // Un clip de audio que no existe es normal (se lee con la voz del sistema); lo demás no.
+    if (r.status() >= 400 && !/\/audio\/v1\//.test(r.url())) {
+      dudosos.push(`${r.status()} ${r.url().slice(0, 120)}`);
+      console.log(`  ⚠ respuesta ${r.status()}: ${r.url().slice(0, 140)}`);
+    }
+  });
   p.on('console', (m) => {
     const t = m.text();
     if (m.type() === 'error' && !/Failed to load resource|supabase|jsdelivr|ERR_INTERNET|net::ERR/.test(t)) {
+      if (/NetworkError: A network error occurred/.test(t)) return; // audio detenido a media carga
       errores.push(t.slice(0, 200));
       console.log(`  ⚠ consola: ${t.slice(0, 200)} @ ${m.location()?.url ?? ''}:${m.location()?.lineNumber ?? ''}`);
     }
@@ -132,6 +139,12 @@ try {
   revisa(!(await texto(p)).includes('teléfono te pedirá'), 'La bienvenida habla de escribir, no de micrófono de teléfono');
   await captura(p, '01-bienvenida');
   revisa(await clic(p, 'Empezar'), 'Botón Empezar');
+  await espera(800);
+  const iconos = await p.evaluate(async () => {
+    await document.fonts.ready;
+    return [...document.fonts].filter((f) => /ionicons/i.test(f.family) && f.status === 'loaded').length;
+  });
+  revisa(iconos > 0, 'Los iconos cargan (fuente Ionicons)');
 
   console.log('\n== Inicio y audio ==');
   revisa(await esperaTexto(p, 'Escuchar'), 'Inicio muestra la matutina y el botón Escuchar');
@@ -235,6 +248,7 @@ try {
   const guardada = await p.evaluate(() => localStorage.getItem('escala_texto'));
   revisa(guardada === '1.2', 'El tamaño de letra se recuerda', `escala_texto=${guardada}`);
 
+  revisa(dudosos.length === 0, 'Todos los archivos del programa se encuentran (sin 404)', dudosos.slice(0, 2).join(' | '));
   revisa(errores.length === 0, 'Sin errores en la consola', errores.slice(0, 3).join(' | '));
 } catch (e) {
   falla('La prueba no pudo terminar', String(e.message ?? e));

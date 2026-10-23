@@ -47,7 +47,7 @@ jobs:
         working-directory: desktop
         run: node scripts/preparar.mjs
       - name: Empaquetar la carpeta desktop/ ya preparada
-        run: tar -C desktop --exclude=node_modules -cf desktop.tar .
+        run: tar -C desktop --exclude=./node_modules -cf desktop.tar .
       - uses: actions/upload-artifact@v4
         with:
           name: desktop-preparado

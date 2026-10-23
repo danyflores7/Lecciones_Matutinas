@@ -29,7 +29,8 @@ export default function RootLayout() {
     // navegador avise "play() interrumpido por pause()". No es un error real.
     if (Platform.OS === 'web') {
       const ignorar = (e: PromiseRejectionEvent) => {
-        if ((e.reason as Error | undefined)?.name === 'AbortError') e.preventDefault();
+        const n = (e.reason as Error | undefined)?.name;
+        if (n === 'AbortError' || n === 'NetworkError') e.preventDefault();
       };
       window.addEventListener('unhandledrejection', ignorar);
     }

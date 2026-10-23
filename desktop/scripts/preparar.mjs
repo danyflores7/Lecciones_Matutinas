@@ -4,7 +4,7 @@
 //   datos/  Biblia completa y datos de búsqueda (del branch `audio`)
 // Uso: node scripts/preparar.mjs   (desde desktop/)
 import { execFileSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, rmSync, readdirSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -24,6 +24,25 @@ sh('npx', ['expo', 'export', '-p', 'web', '--output-dir', WEB], {
   shell: process.platform === 'win32',
 });
 
+// Expo guarda los iconos y fuentes en web/assets/node_modules/…; muchas
+// herramientas (empaquetadores, tar, antivirus) descartan carpetas con ese
+// nombre y la app se quedaría sin iconos. Se renombra y se corrige el código.
+const nm = path.join(WEB, 'assets', 'node_modules');
+if (existsSync(nm)) {
+  renameSync(nm, path.join(WEB, 'assets', 'modulos'));
+  const arreglar = (dir) => {
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      const f = path.join(dir, e.name);
+      if (e.isDirectory()) arreglar(f);
+      else if (/\.(js|html|json|css)$/.test(e.name)) {
+        const t = readFileSync(f, 'utf8');
+        if (t.includes('assets/node_modules/')) writeFileSync(f, t.replaceAll('assets/node_modules/', 'assets/modulos/'));
+      }
+    }
+  };
+  arreglar(WEB);
+}
+
 console.log('2/3 Trayendo audio y datos del branch audio…');
 // Se actualiza la referencia si hay red; si no, se usa la que ya hay.
 try { sh('git', ['fetch', '-q', 'origin', 'audio'], { cwd: RAIZ }); } catch { /* sin red */ }
@@ -42,6 +61,6 @@ rmSync(path.join(RECURSOS, 'v1'), { recursive: true });
 
 console.log('3/3 Verificando…');
 const mp3 = readdirSync(path.join(RECURSOS, 'audio', 'v1')).filter((f) => f.endsWith('.mp3')).length;
-const faltan = ['web/index.html', 'datos/v1/biblia.json'].filter((f) => !existsSync(path.join(RECURSOS, f)));
+const faltan = ['web/index.html', 'datos/v1/biblia.json', 'web/assets/modulos'].filter((f) => !existsSync(path.join(RECURSOS, f)));
 if (faltan.length || mp3 < 2000) throw new Error(`Recursos incompletos: faltan ${faltan.join(', ')} · mp3=${mp3}`);
 console.log(`Listo: ${mp3} audios, Biblia y app web en desktop/recursos/`);
