@@ -136,7 +136,9 @@ try {
   }
   if (tiempos.length) {
     revisa(tiempos[0].fuente === 'incluido', 'La voz sale del audio incluido (sin internet)', `${tiempos[0].ms} ms hasta oírse`);
-    revisa(tiempos[0].ms < 1500, 'Arranque rápido (< 1.5 s)', `${tiempos[0].ms} ms`);
+    // En equipos de prueba (CI) el tiempo no es representativo: solo se exige en una computadora real.
+    if (SIN_AUDIO) console.log(`  ℹ Arranque de la voz: ${tiempos[0].ms} ms (equipo de pruebas, sin umbral)`);
+    else revisa(tiempos[0].ms < 1500, 'Arranque rápido (< 1.5 s)', `${tiempos[0].ms} ms`);
   } else if (SIN_AUDIO) {
     console.log('  ⚠ Sin tarjeta de sonido: no se pudo medir el arranque de la voz (se omite).');
   } else {

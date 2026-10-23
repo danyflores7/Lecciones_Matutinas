@@ -26,6 +26,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0 # necesita el branch "audio"
+          # Solo lo necesario: en el repo hay carpetas viejas con "\" en el nombre
+          # que Windows no puede crear (Matitinas_primer_semestre_2026\).
+          sparse-checkout: |
+            mobile
+            desktop
+            tools
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -68,6 +74,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          # Solo lo necesario: en el repo hay carpetas viejas con "\" en el nombre
+          # que Windows no puede crear (Matitinas_primer_semestre_2026\).
+          sparse-checkout: |
+            mobile
+            desktop
+            tools
       - uses: actions/setup-node@v4
         with:
           node-version: 22
