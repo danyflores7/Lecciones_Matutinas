@@ -4,6 +4,15 @@ Formato: **App vN · versionCode · versionName · fecha**. El archivo publicado
 Desde v6, **versionCode = N − 1** (v4 nunca existió). Reconstruido de `git log` y de los `.aab` de la raíz;
 desde v16, cada versión se anota aquí al publicarla (ver `mantenimiento/forma-de-trabajo.md`).
 
+## Escritorio 1.13.1 · programa para Mac y Windows · 23-oct-2026
+Carpeta `desktop/` (Electron). Mismo código de la app; trae la voz de Jorge, la Biblia y el texto del año, sin internet.
+Modo por voz escribiendo, Copiar en lugar de Compartir. Instaladores compilados y probados (34 comprobaciones) en
+máquinas reales de GitHub (Windows y Mac). Ver `desktop/LEEME.md`.
+
+## v17 · versionCode 16 · 1.13.1 · 21-oct-2026
+Mide cuánto tarda en oírse la voz (Ajustes → Acerca de la app → "Arranque de la voz") y puede traer los 2,695 audios dentro
+de la app (`Matutinas-v17-completa.apk`, solo para pruebas por APK: 208 MB).
+
 ## v16 · versionCode 15 · 1.13.0 · en curso
 Commits `42fb504`, `55e8b51`, `a0efc87`, `2f468a0`, `0e0db8e`, `e4e9dd5` (15-oct-2026). Correcciones de la evaluación de usabilidad.
 - **Voz:** intérprete reescrito (continúa, repite, para; ordinales; "salmo"; sinónimos; "pasado mañana", "la del 20 de octubre"; rechazo de peticiones ajenas). Corpus 175/175 y 30/30 frases nuevas.

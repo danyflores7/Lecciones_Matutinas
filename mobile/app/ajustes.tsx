@@ -49,7 +49,7 @@ async function armarDiagnostico(ocupado: number | null, completo: boolean): Prom
   const fecha = c.fecha ? `${fechaDiaMes(c.fecha.slice(0, 10))} ${c.fecha.slice(0, 4)}` : '?';
   return {
     lineas: [
-      ['Versión', `${version} (${codigo})`],
+      ['Versión', codigo === '?' ? `${version}` : `${version} (${codigo})`],
       [Platform.OS === 'web' ? 'Equipo' : 'Teléfono', Platform.OS === 'web' ? (window.matutinasDesktop?.plataforma ?? 'navegador') : `${Platform.OS} ${Platform.Version}`],
       [
         'Contenido',

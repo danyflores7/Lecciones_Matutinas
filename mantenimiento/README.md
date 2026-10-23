@@ -197,3 +197,19 @@ Pistas rápidas:
 | "La Biblia completa aún se está descargando" | Nunca tuvo internet desde que instaló | `descargarDatos()` en `lib/biblia.ts` |
 
 Después: registra el reporte en el tablero con severidad y frecuencia ([forma-de-trabajo.md](forma-de-trabajo.md#comentarios-de-la-iglesia)).
+
+## Programa de escritorio (Mac y Windows)
+
+La misma app, en una ventana, para laptops: carpeta `desktop/` (Electron). Trae adentro la app web, la voz de
+Jorge (2,695 audios) y la Biblia, así que no necesita internet. Detalle y pasos en [`desktop/LEEME.md`](../desktop/LEEME.md).
+
+- **Compilar y probar:** GitHub → Actions → *Programa de escritorio* → *Run workflow*. Compila Windows y Mac en máquinas
+  reales, **abre el programa y le corre 34 comprobaciones** (`desktop/scripts/prueba_humo.mjs`), y deja los instaladores
+  como *artifacts* (no se publica nada solo).
+- **Local:** `cd desktop && npm run dist:mac` (Mac). Windows se compila en GitHub: el repo tiene carpetas con `\` en el
+  nombre que Windows no puede descargar, por eso el flujo prepara todo en Linux y la máquina Windows solo recibe `desktop/`.
+- **Lo propio de escritorio** vive en `mobile/lib/*.web.ts`; el modo por voz se escribe (Electron no trae reconocimiento de voz).
+- Los instaladores **no están firmados** con certificado comercial: Windows (SmartScreen) y Mac (Gatekeeper) muestran un aviso
+  la primera vez; ver `desktop/LEEME.md` para el paso a paso.
+- Si cambia el contenido o el audio: publicar en el branch `audio` y volver a compilar.
+
