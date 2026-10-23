@@ -37,7 +37,14 @@ const revisa = (cond, nombre, detalle) => (cond ? ok(nombre, detalle) : falla(no
 // --- Lanzar el programa ---
 const perfil = mkdtempSync(path.join(os.tmpdir(), 'matutinas-prueba-'));
 const exe = process.argv[2];
-const args = [`--remote-debugging-port=${PUERTO}`, `--user-data-dir=${perfil}`, '--no-sandbox'];
+const args = [
+  `--remote-debugging-port=${PUERTO}`,
+  `--user-data-dir=${perfil}`,
+  '--no-sandbox',
+  '--disable-renderer-backgrounding',
+  '--disable-backgrounding-occluded-windows',
+  '--disable-background-timer-throttling',
+];
 const hijo = exe
   ? spawn(exe, args, { stdio: 'ignore' })
   : spawn(path.join(DESKTOP, 'node_modules', '.bin', process.platform === 'win32' ? 'electron.cmd' : 'electron'), ['.', ...args], {
@@ -107,9 +114,14 @@ try {
   navegador = b;
   const errores = [];
   p.on('pageerror', (e) => errores.push(String(e.message).slice(0, 200)));
+  p.on('requestfailed', (r) => console.log(`  ⚠ petición fallida: ${r.url().slice(0, 120)} (${r.failure()?.errorText})`));
+  p.on('response', (r) => r.status() >= 400 && console.log(`  ⚠ respuesta ${r.status()}: ${r.url().slice(0, 120)}`));
   p.on('console', (m) => {
     const t = m.text();
-    if (m.type() === 'error' && !/Failed to load resource|supabase|jsdelivr|ERR_INTERNET|net::ERR/.test(t)) errores.push(t.slice(0, 200));
+    if (m.type() === 'error' && !/Failed to load resource|supabase|jsdelivr|ERR_INTERNET|net::ERR/.test(t)) {
+      errores.push(t.slice(0, 200));
+      console.log(`  ⚠ consola: ${t.slice(0, 200)} @ ${m.location()?.url ?? ''}:${m.location()?.lineNumber ?? ''}`);
+    }
   });
 
   console.log('\n== Arranque ==');

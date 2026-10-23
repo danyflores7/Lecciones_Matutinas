@@ -67,6 +67,9 @@ function crearVentana() {
       sandbox: true,
       // La voz debe poder sonar sin que haya que tocar la pantalla antes.
       autoplayPolicy: 'no-user-gesture-required',
+      // Si la ventana queda tapada o en segundo plano, que la voz y la pantalla
+      // no se pausen ni se congelen.
+      backgroundThrottling: false,
     },
   });
   ventana.loadURL('app://matutinas/');
