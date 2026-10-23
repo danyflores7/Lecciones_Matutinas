@@ -35,3 +35,6 @@ legal/autorizacion-iglesia.md
 desktop/node_modules/
 desktop/recursos/
 desktop/dist/
+
+# Instaladores de escritorio (se regeneran)
+Escritorio/
