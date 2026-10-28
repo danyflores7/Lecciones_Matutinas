@@ -6,7 +6,8 @@ import { Ionicons } from '@expo/vector-icons';
 import type { Leccion, Pregunta } from '../lib/supabase';
 import { getLeccionLocal } from '../lib/contenido';
 import { getProgreso, setProgreso } from '../lib/progreso';
-import { segmentosDePregunta } from '../lib/segmentos';
+import { citaParaVoz, segmentosDePregunta } from '../lib/segmentos';
+import { fechaDiaMes } from '../lib/fechas';
 import { detenerVoz, reproducirPartes, useEstadoVoz } from '../lib/voz';
 import { getVelocidad } from '../lib/almacen';
 import { conEscala, useEscalaTexto } from '../lib/escala';
@@ -25,7 +26,8 @@ export default function Estudiar() {
   const scroll = useRef<ScrollView>(null);
 
   const [data, setData] = useState<Datos | null>(null);
-  const [idx, setIdx] = useState(0);
+  // -1 = pantalla de inicio de la lección (título, subtítulo, versículo central y nota central).
+  const [idx, setIdx] = useState(-1);
   const [loading, setLoading] = useState(true);
   const [terminada, setTerminada] = useState(false);
   const [escuchando, setEscuchando] = useState(false);
@@ -44,13 +46,14 @@ export default function Estudiar() {
         navigation.setOptions({ title: `Lección ${d.leccion.numero}` });
         const pedida = Number(params.pregunta);
         const guardado = await getProgreso(params.fecha);
+        // Sin avance guardado (o apenas en la 1): se empieza por el inicio de la lección.
         const inicio =
           pedida >= 1
             ? pedida
-            : guardado && !guardado.terminada
+            : guardado && !guardado.terminada && guardado.pregunta > 1
               ? guardado.pregunta
-              : 1;
-        setIdx(Math.min(Math.max(inicio, 1), d.preguntas.length) - 1);
+              : 0;
+        setIdx(inicio === 0 ? -1 : Math.min(inicio, d.preguntas.length) - 1);
       }
       setLoading(false);
     })();
@@ -67,11 +70,11 @@ export default function Estudiar() {
   }, []);
 
   const total = data?.preguntas.length ?? 0;
-  const p = data?.preguntas[idx];
+  const p = idx >= 0 ? data?.preguntas[idx] : undefined;
 
   // Guarda el avance cada vez que cambia la pregunta.
   useEffect(() => {
-    if (data && params.fecha && !terminada) {
+    if (data && params.fecha && !terminada && idx >= 0) {
       setProgreso(params.fecha, { pregunta: idx + 1, total, terminada: false });
     }
   }, [idx, data, params.fecha, total, terminada]);
@@ -81,7 +84,7 @@ export default function Estudiar() {
       detenerVoz();
       setEscuchando(false);
       setTerminada(false);
-      setIdx((i) => Math.min(Math.max(i + n, 0), total - 1));
+      setIdx((i) => Math.min(Math.max(i + n, -1), total - 1));
       scroll.current?.scrollTo({ y: 0, animated: false });
     },
     [total]
@@ -94,17 +97,27 @@ export default function Estudiar() {
   }, [params.fecha, total]);
 
   const escuchar = useCallback(() => {
-    if (!data || !p) return;
+    if (!data || (idx >= 0 && !p)) return;
     if (escuchando) {
       detenerVoz();
       setEscuchando(false);
       return;
     }
     setEscuchando(true);
-    reproducirPartes([`Pregunta ${p.orden}.`, ...segmentosDePregunta(p, data.citasTexto)], {
-      rate: velocidad,
-    });
-  }, [data, p, escuchando, velocidad]);
+    const l = data.leccion;
+    // Inicio: mismas frases que "Escuchar lección" (ya están grabadas con la voz de Jorge).
+    const partes =
+      idx < 0
+        ? [
+            l.titulo,
+            'Versículo central.',
+            `${citaParaVoz(l.versiculo_central_cita)}.`,
+            ...(l.versiculo_central_texto ? [l.versiculo_central_texto] : []),
+            l.introduccion,
+          ]
+        : [`Pregunta ${p!.orden}.`, ...segmentosDePregunta(p!, data.citasTexto)];
+    reproducirPartes(partes, { rate: velocidad });
+  }, [data, p, idx, escuchando, velocidad]);
 
   if (loading) {
     return (
@@ -114,7 +127,7 @@ export default function Estudiar() {
     );
   }
 
-  if (!data || !p) {
+  if (!data || (idx >= 0 && !p)) {
     return (
       <View style={styles.centered}>
         <Text style={styles.vacio}>No se encontró la lección.</Text>
@@ -139,7 +152,7 @@ export default function Estudiar() {
           style={({ pressed }) => [styles.btnSecundario, styles.btnAncho, pressed && styles.pressed]}
           onPress={() => {
             setTerminada(false);
-            setIdx(0);
+            setIdx(-1);
           }}
           accessibilityRole="button"
         >
@@ -149,7 +162,9 @@ export default function Estudiar() {
     );
   }
 
-  const pct = Math.round(((idx + 1) / total) * 100);
+  const enInicio = idx < 0;
+  const pct = enInicio ? 0 : Math.round(((idx + 1) / total) * 100);
+  const l = data.leccion;
   const ultima = idx === total - 1;
   const preparando = escuchando && estadoVoz === 'preparando';
 
@@ -160,22 +175,66 @@ export default function Estudiar() {
           {data.leccion.titulo}
         </Text>
         <Text style={styles.paso} accessibilityLiveRegion="polite">
-          Pregunta {idx + 1} de {total}
+          {enInicio ? `Inicio de la lección · ${total} preguntas` : `Pregunta ${idx + 1} de ${total}`}
         </Text>
         <View
           style={styles.barraBg}
           accessible
           accessibilityRole="progressbar"
           accessibilityLabel="Avance en la lección"
-          accessibilityValue={{ min: 1, max: total, now: idx + 1, text: `Pregunta ${idx + 1} de ${total}` }}
+          accessibilityValue={{ min: 0, max: total, now: Math.max(idx + 1, 0), text: enInicio ? 'Inicio de la lección' : `Pregunta ${idx + 1} de ${total}` }}
         >
           <View style={[styles.barra, { width: `${pct}%` }]} />
         </View>
       </View>
 
       <ScrollView ref={scroll} contentContainerStyle={styles.content}>
+        {enInicio ? (
+          <>
+            {l.serie ? <Text style={styles.serie}>{l.serie.replace(/,\s*$/, '')}</Text> : null}
+            <Text style={[styles.tituloGrande, conEscala(styles.tituloGrande, esc)]} accessibilityRole="header">
+              {l.titulo}
+            </Text>
+            <Text style={styles.meta}>
+              Lección {l.numero} · {fechaDiaMes(l.fecha)}
+            </Text>
+
+            <View style={styles.centralBox}>
+              <Text style={styles.centralLabel}>Versículo central · {l.versiculo_central_cita}</Text>
+              {l.versiculo_central_texto ? (
+                <Text style={[styles.centralTexto, conEscala(styles.centralTexto, esc)]}>
+                  {l.versiculo_central_texto}
+                </Text>
+              ) : null}
+            </View>
+
+            {l.introduccion ? (
+              <View style={styles.notaBox}>
+                <Text style={styles.notaTitulo}>Nota central</Text>
+                <Text style={[styles.nota, conEscala(styles.nota, esc)]}>{l.introduccion}</Text>
+              </View>
+            ) : null}
+
+            <Pressable
+              style={({ pressed }) => [styles.btnSecundario, styles.espacioArriba, pressed && styles.pressed]}
+              onPress={escuchar}
+              accessibilityRole="button"
+              accessibilityLabel={escuchando ? 'Detener la lectura' : 'Escuchar el inicio de la lección'}
+            >
+              {preparando ? (
+                <ActivityIndicator color="#185FA5" />
+              ) : (
+                <Ionicons name={escuchando ? 'stop' : 'volume-high-outline'} size={20} color="#185FA5" />
+              )}
+              <Text style={styles.btnSecundarioText}>
+                {preparando ? 'Preparando audio…' : escuchando ? 'Detener' : 'Escuchar el inicio'}
+              </Text>
+            </Pressable>
+          </>
+        ) : (
+          <>
         <Text style={[styles.pregunta, conEscala(styles.pregunta, esc)]} accessibilityRole="header">
-          {p.pregunta}
+          {p!.pregunta}
         </Text>
 
         <Pressable
@@ -194,7 +253,7 @@ export default function Estudiar() {
           </Text>
         </Pressable>
 
-        {(p.citas ?? []).map((c) => (
+        {(p!.citas ?? []).map((c) => (
           <View key={c} style={styles.citaBox}>
             <Text style={styles.citaTitulo}>{c}</Text>
             <Text style={[styles.citaTexto, conEscala(styles.citaTexto, esc)]}>
@@ -203,22 +262,25 @@ export default function Estudiar() {
           </View>
         ))}
 
-        {p.nota ? (
+        {p!.nota ? (
           <View style={styles.notaBox}>
             <Text style={styles.notaTitulo}>Nota</Text>
-            <Text style={[styles.nota, conEscala(styles.nota, esc)]}>{p.nota}</Text>
+            <Text style={[styles.nota, conEscala(styles.nota, esc)]}>{p!.nota}</Text>
           </View>
         ) : null}
+
+          </>
+        )}
       </ScrollView>
 
       <View style={styles.pie}>
         <Pressable
-          style={({ pressed }) => [styles.btnSecundario, styles.flex, idx === 0 && styles.deshabilitado, pressed && styles.pressed]}
+          style={({ pressed }) => [styles.btnSecundario, styles.flex, enInicio && styles.deshabilitado, pressed && styles.pressed]}
           onPress={() => mover(-1)}
-          disabled={idx === 0}
+          disabled={enInicio}
           accessibilityRole="button"
-          accessibilityLabel="Pregunta anterior"
-          accessibilityState={{ disabled: idx === 0 }}
+          accessibilityLabel={idx === 0 ? 'Volver al inicio de la lección' : 'Pregunta anterior'}
+          accessibilityState={{ disabled: enInicio }}
         >
           <Ionicons name="chevron-back" size={20} color="#185FA5" />
           <Text style={styles.btnSecundarioText}>Anterior</Text>
@@ -227,9 +289,9 @@ export default function Estudiar() {
           style={({ pressed }) => [styles.btnPrimario, styles.flex, pressed && styles.pressed]}
           onPress={ultima ? terminar : () => mover(1)}
           accessibilityRole="button"
-          accessibilityLabel={ultima ? 'Terminar la lección' : 'Pregunta siguiente'}
+          accessibilityLabel={ultima ? 'Terminar la lección' : enInicio ? 'Empezar con la pregunta 1' : 'Pregunta siguiente'}
         >
-          <Text style={styles.btnPrimarioText}>{ultima ? 'Terminar' : 'Siguiente'}</Text>
+          <Text style={styles.btnPrimarioText}>{ultima ? 'Terminar' : enInicio ? 'Empezar' : 'Siguiente'}</Text>
           <Ionicons name={ultima ? 'checkmark' : 'chevron-forward'} size={20} color="#FFFFFF" />
         </Pressable>
       </View>
@@ -248,6 +310,13 @@ const styles = StyleSheet.create({
   barraBg: { height: 8, borderRadius: 999, backgroundColor: '#C7DEF5', overflow: 'hidden', marginTop: 8 },
   barra: { height: 8, borderRadius: 999, backgroundColor: '#185FA5' },
   content: { paddingHorizontal: 20, paddingBottom: 24 },
+  serie: { fontSize: 13, fontWeight: '600', color: '#185FA5', textTransform: 'uppercase', letterSpacing: 0.5 },
+  tituloGrande: { fontSize: 24, fontWeight: '700', color: '#042C53', marginTop: 4 },
+  meta: { fontSize: 14, color: '#5F5E5A', marginTop: 4 },
+  centralBox: { backgroundColor: '#E6F1FB', borderRadius: 16, padding: 18, marginTop: 16 },
+  centralLabel: { fontSize: 13, fontWeight: '600', color: '#0C447C', marginBottom: 8 },
+  centralTexto: { fontSize: 18, lineHeight: 28, color: '#042C53', fontFamily: 'serif' },
+  espacioArriba: { marginTop: 16 },
   pregunta: { fontSize: 19, lineHeight: 28, fontWeight: '600', color: '#042C53', marginBottom: 14 },
   citaBox: { backgroundColor: '#FFFFFF', borderRadius: 12, borderLeftWidth: 3, borderLeftColor: '#185FA5', padding: 14, marginTop: 12 },
   citaTitulo: { fontSize: 13, fontWeight: '600', color: '#0C447C', marginBottom: 6 },

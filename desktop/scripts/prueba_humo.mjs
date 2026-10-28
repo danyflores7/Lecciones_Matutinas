@@ -173,7 +173,8 @@ try {
 
   console.log('\n== Calendario, matutina de un día y notas ==');
   await ir(p, '/calendario');
-  revisa(await esperaTexto(p, 'Octubre') || (await esperaTexto(p, 'Enero')), 'Calendario carga los meses');
+  revisa((await esperaTexto(p, 'Octubre')) || (await esperaTexto(p, 'Enero')), 'Matutinas carga los meses');
+  revisa((await texto(p)).includes('Matutinas') && !(await texto(p)).includes('Calendario'), 'La pestaña dice Matutinas (no Calendario)');
   await captura(p, '03-calendario');
   await ir(p, '/matutina?fecha=2026-10-20');
   revisa(await esperaTexto(p, 'Martes 20 de octubre'), 'Matutina del 20 de octubre', 'con fecha en minúscula "de octubre"');
@@ -182,9 +183,15 @@ try {
 
   console.log('\n== Estudio y lección ==');
   await ir(p, '/estudio');
-  revisa(await esperaTexto(p, 'Esta semana'), 'Estudio marca la lección de esta semana');
+  revisa(await esperaTexto(p, 'Esta semana'), 'Lecciones marca la lección de esta semana');
+  revisa((await texto(p)).includes('Lecciones') && !(await texto(p)).includes('Estudio'), 'La pestaña dice Lecciones (no Estudio)');
   await captura(p, '05-estudio');
   await ir(p, '/estudiar?fecha=2026-10-17');
+  revisa(await esperaTexto(p, 'NOTA CENTRAL'), 'Estudiar empieza con el inicio de la lección (título, versículo central y nota central)');
+  const ini = await texto(p);
+  revisa(ini.includes('Versículo central') && ini.includes('Lección 16'), 'El inicio muestra título, versículo central y la lección');
+  await captura(p, '06a-estudiar-inicio');
+  revisa(await clic(p, 'Empezar'), 'Botón Empezar (pasa a la pregunta 1)');
   revisa(await esperaTexto(p, 'Pregunta 1 de 14'), 'Estudiar muestra "Pregunta 1 de 14"');
   revisa(await clic(p, 'Siguiente'), 'Pasar a la siguiente pregunta');
   revisa(await esperaTexto(p, 'Pregunta 2 de 14'), 'Ahora "Pregunta 2 de 14"');
@@ -206,6 +213,25 @@ try {
   await p.keyboard.type('no temas');
   await p.keyboard.press('Enter');
   revisa(await esperaTexto(p, 'resultado', 20000), 'Buscar palabras ("no temas") en toda la Biblia');
+
+  // El tamaño de letra de Ajustes se aplica a Buscar
+  const px = () => p.evaluate(() => { const e = [...document.querySelectorAll('*')].find((x) => x.innerText && x.innerText.startsWith('Porque de tal manera amó Dios') && x.children.length === 0); return e ? parseFloat(getComputedStyle(e).fontSize) : 0; });
+  await ir(p, '/buscar');
+  await (await p.$('input')).click();
+  await p.keyboard.type('Juan 3:16');
+  await p.keyboard.press('Enter');
+  await esperaTexto(p, 'Porque de tal manera amó Dios', 20000);
+  const normal = await px();
+  await p.evaluate(() => localStorage.setItem('escala_texto', '1.4'));
+  await ir(p, '/buscar');
+  await (await p.$('input')).click();
+  await p.keyboard.type('Juan 3:16');
+  await p.keyboard.press('Enter');
+  await esperaTexto(p, 'Porque de tal manera amó Dios', 20000);
+  const grande = await px();
+  revisa(normal > 0 && grande > normal * 1.3, 'Buscar respeta el tamaño de letra de Ajustes', `${normal}px → ${grande}px`);
+  await captura(p, '07b-buscar-letra-grande');
+  await p.evaluate(() => localStorage.setItem('escala_texto', '1'));
 
   console.log('\n== Modo por voz (escribiendo) ==');
   await ir(p, '/asistente');

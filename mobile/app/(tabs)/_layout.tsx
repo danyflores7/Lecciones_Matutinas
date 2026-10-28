@@ -30,7 +30,7 @@ export default function TabsLayout() {
         <Tabs.Screen
           name="estudio"
           options={{
-            title: 'Estudio',
+            title: 'Lecciones',
             tabBarIcon: ({ color, size }) => (
               <Ionicons name="book-outline" color={color} size={size} />
             ),
@@ -39,7 +39,7 @@ export default function TabsLayout() {
         <Tabs.Screen
           name="calendario"
           options={{
-            title: 'Calendario',
+            title: 'Matutinas',
             tabBarIcon: ({ color, size }) => (
               <Ionicons name="calendar-outline" color={color} size={size} />
             ),

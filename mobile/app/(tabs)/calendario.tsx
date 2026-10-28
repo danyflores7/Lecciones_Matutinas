@@ -175,7 +175,7 @@ export default function Calendario() {
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.tituloFila}>
         <Text style={styles.titulo} accessibilityRole="header">
-          Calendario
+          Matutinas
         </Text>
         <Pressable
           onPress={() => irAHoy(true)}

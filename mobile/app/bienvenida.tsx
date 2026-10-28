@@ -9,13 +9,13 @@ const PASOS_TELEFONO: { icono: keyof typeof Ionicons.glyphMap; titulo: string; t
     icono: 'sunny-outline',
     titulo: 'La matutina de cada día',
     texto:
-      'En Inicio está la matutina de hoy: léela, toca "Escuchar" para oírla o "Memorizar" para practicarla. En Calendario están todos los días del año.',
+      'En Inicio está la matutina de hoy: léela, toca "Escuchar" para oírla o "Memorizar" para practicarla. En Matutinas están todos los días del año.',
   },
   {
     icono: 'book-outline',
     titulo: 'Las lecciones de la semana',
     texto:
-      'En Estudio está la lección de esta semana marcada. Con "Estudiar pregunta por pregunta" ves una pregunta a la vez y la app recuerda dónde te quedaste.',
+      'En Lecciones está la de esta semana marcada. Con "Estudiar pregunta por pregunta" ves una pregunta a la vez y la app recuerda dónde te quedaste.',
   },
   {
     icono: 'mic-outline',

@@ -126,7 +126,7 @@ export default function Estudio() {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.tituloFila}>
-        <Text style={styles.titulo} accessibilityRole="header">Estudio</Text>
+        <Text style={styles.titulo} accessibilityRole="header">Lecciones</Text>
         {vigente ? (
           <Pressable
             onPress={() => irAVigente(true)}

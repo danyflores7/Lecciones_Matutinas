@@ -17,6 +17,7 @@ import { citaHablada, normalizar, parseCita } from '../../lib/citas';
 import { bibliaDisponible, buscarEnBiblia, obtenerVersiculo, versiculosRelacionados } from '../../lib/biblia';
 import { buscarTextoLocal, dondeSeCita, type LugarCita } from '../../lib/contenido';
 import { fechaDiaMes } from '../../lib/fechas';
+import { conEscala, useEscalaTexto } from '../../lib/escala';
 
 type Ambito = 'biblia' | 'lecciones';
 
@@ -40,6 +41,7 @@ function citaEscrita(q: string): string | null {
 
 export default function Buscar() {
   const router = useRouter();
+  const esc = useEscalaTexto();
   const [q, setQ] = useState('');
   const [ambito, setAmbito] = useState<Ambito>('biblia');
   const [buscando, setBuscando] = useState(false);
@@ -126,7 +128,7 @@ export default function Buscar() {
             placeholder="Juan 3:16 o unas palabras"
             placeholderTextColor="#6E6C66"
             returnKeyType="search"
-            style={styles.input}
+            style={[styles.input, conEscala(styles.input, esc)]}
             accessibilityLabel="Buscar una cita o unas palabras"
             autoCorrect={false}
           />
@@ -166,7 +168,7 @@ export default function Buscar() {
             accessibilityRole="radio"
             accessibilityState={{ checked: ambito === a }}
           >
-            <Text style={[styles.ambitoText, ambito === a && styles.ambitoTextActivo]}>
+            <Text style={[styles.ambitoText, conEscala(styles.ambitoText, esc), ambito === a && styles.ambitoTextActivo]}>
               {a === 'biblia' ? 'En toda la Biblia' : 'En lecciones y matutinas'}
             </Text>
           </Pressable>
@@ -179,7 +181,7 @@ export default function Buscar() {
         </View>
       ) : resultados === null ? (
         <View style={styles.ayuda}>
-          <Text style={styles.ayudaTexto}>
+          <Text style={[styles.ayudaTexto, conEscala(styles.ayudaTexto, esc)]}>
             Escribe una cita para leerla y ver dónde aparece en las lecciones, o unas palabras que
             recuerdes para encontrar el versículo.
           </Text>
@@ -195,7 +197,7 @@ export default function Buscar() {
                 accessibilityRole="button"
                 accessibilityLabel={`Buscar ${e}`}
               >
-                <Text style={styles.ejemploText}>{e}</Text>
+                <Text style={[styles.ejemploText, conEscala(styles.ejemploText, esc)]}>{e}</Text>
               </Pressable>
             ))}
           </View>
@@ -208,7 +210,7 @@ export default function Buscar() {
           keyboardShouldPersistTaps="handled"
           ListHeaderComponent={
             resumen ? (
-              <Text style={styles.resumen} accessibilityLiveRegion="polite">
+              <Text style={[styles.resumen, conEscala(styles.resumen, esc)]} accessibilityLiveRegion="polite">
                 {resumen}
               </Text>
             ) : null
@@ -216,17 +218,17 @@ export default function Buscar() {
           renderItem={({ item }) => {
             if (item.tipo === 'titulo') {
               return (
-                <Text style={styles.seccion} accessibilityRole="header">
+                <Text style={[styles.seccion, conEscala(styles.seccion, esc)]} accessibilityRole="header">
                   {item.texto}
                 </Text>
               );
             }
-            if (item.tipo === 'aviso') return <Text style={styles.aviso}>{item.texto}</Text>;
+            if (item.tipo === 'aviso') return <Text style={[styles.aviso, conEscala(styles.aviso, esc)]}>{item.texto}</Text>;
             if (item.tipo === 'versiculo') {
               return (
                 <View style={styles.tarjeta} accessible accessibilityLabel={`${item.cita}. ${item.texto}`}>
-                  <Text style={styles.cita}>{item.cita}</Text>
-                  <Text style={styles.texto}>{item.texto}</Text>
+                  <Text style={[styles.cita, conEscala(styles.cita, esc)]}>{item.cita}</Text>
+                  <Text style={[styles.texto, conEscala(styles.texto, esc)]}>{item.texto}</Text>
                 </View>
               );
             }
@@ -239,8 +241,8 @@ export default function Buscar() {
                 accessibilityLabel={`${e.arriba}. ${e.abajo}`}
               >
                 <View style={styles.flex}>
-                  <Text style={styles.lugarArriba}>{e.arriba}</Text>
-                  <Text style={styles.lugarAbajo} numberOfLines={2}>
+                  <Text style={[styles.lugarArriba, conEscala(styles.lugarArriba, esc)]}>{e.arriba}</Text>
+                  <Text style={[styles.lugarAbajo, conEscala(styles.lugarAbajo, esc)]} numberOfLines={3}>
                     {e.abajo}
                   </Text>
                 </View>
