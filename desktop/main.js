@@ -94,6 +94,18 @@ app.whenReady().then(() => {
   Menu.setApplicationMenu(
     Menu.buildFromTemplate([
       ...(process.platform === 'darwin' ? [{ role: 'appMenu' }] : []),
+      {
+        label: 'Editar',
+        submenu: [
+          { role: 'undo', label: 'Deshacer' },
+          { role: 'redo', label: 'Rehacer' },
+          { type: 'separator' },
+          { role: 'cut', label: 'Cortar' },
+          { role: 'copy', label: 'Copiar' },
+          { role: 'paste', label: 'Pegar' },
+          { role: 'selectAll', label: 'Seleccionar todo' },
+        ],
+      },
       { label: 'Ver', submenu: [{ role: 'reload', label: 'Recargar' }, { role: 'togglefullscreen', label: 'Pantalla completa' }, { type: 'separator' }, { role: 'zoomIn', label: 'Acercar' }, { role: 'zoomOut', label: 'Alejar' }, { role: 'resetZoom', label: 'Tamaño normal' }] },
       { label: 'Ventana', submenu: [{ role: 'minimize', label: 'Minimizar' }, { role: 'close', label: 'Cerrar' }] },
     ])

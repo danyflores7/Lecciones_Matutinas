@@ -171,6 +171,13 @@ try {
   }
   await clic(p, 'Detener');
 
+  // Copiar y pegar: el texto se puede seleccionar y el menú Editar existe
+  const sel = await p.evaluate(() => {
+    const e = [...document.querySelectorAll('*')].find((x) => x.children.length === 0 && /Reina-Valera|Mateo|Juan|Salmos|Lucas/.test(x.innerText ?? '') && (x.innerText ?? '').length > 20);
+    return e ? getComputedStyle(e).userSelect : 'sin-texto';
+  });
+  revisa(sel === 'text' || sel === 'auto', 'El texto de la app se puede seleccionar y copiar', `user-select: ${sel}`);
+
   console.log('\n== Calendario, matutina de un día y notas ==');
   await ir(p, '/calendario');
   revisa((await esperaTexto(p, 'Octubre')) || (await esperaTexto(p, 'Enero')), 'Matutinas carga los meses');
@@ -238,6 +245,16 @@ try {
   revisa(await esperaTexto(p, 'Escribe lo que quieres escuchar'), 'En escritorio se escribe el comando');
   revisa(!(await texto(p)).includes('Tocar para hablar'), 'No muestra micrófono (no hay reconocimiento de voz)');
   const entrada = await p.$('input');
+  await entrada.click();
+  // Pegar: se pone texto en el portapapeles del sistema y se pega con el comando del navegador
+  await p.evaluate(() => navigator.clipboard.writeText('lección 2').catch(() => {}));
+  await p.keyboard.down(process.platform === 'darwin' ? 'Meta' : 'Control');
+  await p.keyboard.press('KeyV');
+  await p.keyboard.up(process.platform === 'darwin' ? 'Meta' : 'Control');
+  await espera(300);
+  const pegado = await p.evaluate(() => document.querySelector('input')?.value ?? '');
+  console.log(`  ℹ pegar con el teclado en el cuadro de comandos: "${pegado}"`);
+  await p.evaluate(() => { const i = document.querySelector('input'); if (i) { const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; set.call(i, ''); i.dispatchEvent(new Event('input', { bubbles: true })); } });
   await entrada.click();
   await p.keyboard.type('la nota de la matutina de hoy');
   await p.keyboard.press('Enter');

@@ -28,6 +28,13 @@ export default function RootLayout() {
     // Escritorio/web: detener el audio justo después de empezarlo hace que el
     // navegador avise "play() interrumpido por pause()". No es un error real.
     if (Platform.OS === 'web') {
+      // Escritorio: que se pueda seleccionar y copiar el texto (versículos, notas…).
+      // Los botones siguen sin seleccionarse al hacer clic.
+      const estilo = document.createElement('style');
+      estilo.textContent =
+        'body, body div, body span { -webkit-user-select: text !important; user-select: text !important; }' +
+        ' [role="button"], [role="button"] *, [role="tab"], [role="tab"] * { -webkit-user-select: none !important; user-select: none !important; }';
+      document.head.appendChild(estilo);
       const ignorar = (e: PromiseRejectionEvent) => {
         const n = (e.reason as Error | undefined)?.name;
         if (n === 'AbortError' || n === 'NetworkError') e.preventDefault();
